@@ -1,0 +1,41 @@
+# ========================================================
+# LCR OdontoGest - .gitignore
+# Garante seguranca de dados dos pacientes e conformidade LGPD
+# ========================================================
+
+# Banco de dados e dados confidenciais de saude (NUNCA subir para nuvem publica)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/backups/
+data/anexos/
+backups/
+
+# Ambiente virtual Python
+.venv/
+venv/
+env/
+ENV/
+
+# Caches do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+
+# Compilacao e distribuicao executavel (.exe)
+build/
+dist/
+*.spec
+
+# IDEs e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs locais
+*.log
+
+# Atalhos Windows
+*.lnk
