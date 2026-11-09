@@ -6,15 +6,15 @@ LCR OdontoGest - Dra. Lara Camila (CRO-BA 15247)
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
+from PIL import Image, ImageOps
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFileDialog, QLineEdit, QFrame, QMessageBox,
-    QScrollArea, QSplitter
+    QComboBox, QFileDialog, QLineEdit, QFrame, QMessageBox
 )
-from PySide6.QtCore import Qt, QRect, QRectF
+from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import (
-    QPixmap, QImage, QPainter, QFont, QColor, QBrush, QPen
+    QPixmap, QImage, QPainter, QFont, QColor, QBrush, QPen, QTransform
 )
 
 from services.patient_service import list_attachments, add_attachment, get_patient
@@ -22,7 +22,7 @@ from services.report_service import exportar_html_para_pdf
 
 
 class PhotoComparatorDialog(QDialog):
-    """Diálogo Interativo de Comparação de Fotos Clínicas Antes e Depois."""
+    """Diálogo Interativo de Comparação de Fotos Clínicas Antes e Depois com Rotação Livre."""
     def __init__(self, patient_id: int, current_user: dict, parent=None):
         super().__init__(parent)
         self.patient_id = patient_id
@@ -32,8 +32,14 @@ class PhotoComparatorDialog(QDialog):
         self.path_antes: Optional[Path] = None
         self.path_depois: Optional[Path] = None
 
+        self.img_antes_base: Optional[QImage] = None
+        self.rotacao_antes: int = 0  # em graus: 0, 90, 180, 270
+
+        self.img_depois_base: Optional[QImage] = None
+        self.rotacao_depois: int = 0  # em graus: 0, 90, 180, 270
+
         self.setWindowTitle(f"Comparador Antes e Depois — {self.patient.get('nome', 'Paciente')}")
-        self.resize(1020, 680)
+        self.resize(1060, 710)
         self.init_ui()
         self.carregar_anexos_disponiveis()
 
@@ -44,9 +50,9 @@ class PhotoComparatorDialog(QDialog):
 
         # 1. Barra Superior com Tratamento e Identificação
         top_bar = QFrame(self)
-        top_bar.setStyleSheet("background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;")
+        top_bar.setStyleSheet("background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px;")
         h_top = QHBoxLayout(top_bar)
-        h_top.setContentsMargins(8, 6, 8, 6)
+        h_top.setContentsMargins(8, 4, 8, 4)
         h_top.setSpacing(12)
 
         v_tit = QVBoxLayout()
@@ -89,14 +95,34 @@ class PhotoComparatorDialog(QDialog):
             border-radius: 4px;
         """)
         h_ctrl_antes.addWidget(lbl_tag_antes)
+
+        # Botão de Rotação Antes
+        btn_rot_antes = QPushButton("↻ Girar 90°")
+        btn_rot_antes.setStyleSheet("""
+            QPushButton {
+                background-color: #f1f5f9;
+                color: #0f766e;
+                font-weight: bold;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #e2e8f0;
+            }
+        """)
+        btn_rot_antes.clicked.connect(self.girar_imagem_antes)
+        h_ctrl_antes.addWidget(btn_rot_antes)
+
         h_ctrl_antes.addStretch()
 
         self.cmb_anexos_antes = QComboBox()
-        self.cmb_anexos_antes.setMinimumWidth(160)
+        self.cmb_anexos_antes.setMinimumWidth(150)
         self.cmb_anexos_antes.currentIndexChanged.connect(self.ao_selecionar_anexo_antes)
         h_ctrl_antes.addWidget(self.cmb_anexos_antes)
 
-        btn_pick_antes = QPushButton("Buscar Imagem...")
+        btn_pick_antes = QPushButton("Buscar...")
         btn_pick_antes.setStyleSheet("padding: 4px 10px; font-size: 11px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;")
         btn_pick_antes.clicked.connect(self.escolher_arquivo_antes)
         h_ctrl_antes.addWidget(btn_pick_antes)
@@ -104,7 +130,7 @@ class PhotoComparatorDialog(QDialog):
         v_antes.addLayout(h_ctrl_antes)
 
         # Imagem do Antes
-        self.lbl_img_antes = QLabel("Nenhuma foto selecionada para o ANTES.\nClique em 'Buscar Imagem' ou selecione nos anexos da ficha.", box_antes)
+        self.lbl_img_antes = QLabel("Nenhuma foto selecionada para o ANTES.\nClique em 'Buscar...' ou selecione nos anexos da ficha.", box_antes)
         self.lbl_img_antes.setAlignment(Qt.AlignCenter)
         self.lbl_img_antes.setStyleSheet("color: #94a3b8; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; font-size: 12px; padding: 20px;")
         self.lbl_img_antes.setMinimumSize(380, 360)
@@ -130,14 +156,34 @@ class PhotoComparatorDialog(QDialog):
             border-radius: 4px;
         """)
         h_ctrl_depois.addWidget(lbl_tag_depois)
+
+        # Botão de Rotação Depois
+        btn_rot_depois = QPushButton("↻ Girar 90°")
+        btn_rot_depois.setStyleSheet("""
+            QPushButton {
+                background-color: #f1f5f9;
+                color: #0f766e;
+                font-weight: bold;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #e2e8f0;
+            }
+        """)
+        btn_rot_depois.clicked.connect(self.girar_imagem_depois)
+        h_ctrl_depois.addWidget(btn_rot_depois)
+
         h_ctrl_depois.addStretch()
 
         self.cmb_anexos_depois = QComboBox()
-        self.cmb_anexos_depois.setMinimumWidth(160)
+        self.cmb_anexos_depois.setMinimumWidth(150)
         self.cmb_anexos_depois.currentIndexChanged.connect(self.ao_selecionar_anexo_depois)
         h_ctrl_depois.addWidget(self.cmb_anexos_depois)
 
-        btn_pick_depois = QPushButton("Buscar Imagem...")
+        btn_pick_depois = QPushButton("Buscar...")
         btn_pick_depois.setStyleSheet("padding: 4px 10px; font-size: 11px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;")
         btn_pick_depois.clicked.connect(self.escolher_arquivo_depois)
         h_ctrl_depois.addWidget(btn_pick_depois)
@@ -145,7 +191,7 @@ class PhotoComparatorDialog(QDialog):
         v_depois.addLayout(h_ctrl_depois)
 
         # Imagem do Depois
-        self.lbl_img_depois = QLabel("Nenhuma foto selecionada para o DEPOIS.\nClique em 'Buscar Imagem' ou selecione nos anexos da ficha.", box_depois)
+        self.lbl_img_depois = QLabel("Nenhuma foto selecionada para o DEPOIS.\nClique em 'Buscar...' ou selecione nos anexos da ficha.", box_depois)
         self.lbl_img_depois.setAlignment(Qt.AlignCenter)
         self.lbl_img_depois.setStyleSheet("color: #94a3b8; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; font-size: 12px; padding: 20px;")
         self.lbl_img_depois.setMinimumSize(380, 360)
@@ -158,7 +204,7 @@ class PhotoComparatorDialog(QDialog):
         bottom_bar = QHBoxLayout()
         bottom_bar.setSpacing(10)
 
-        lbl_info = QLabel("Compare a evolução estética e clínica do paciente para acompanhamento e apresentação.")
+        lbl_info = QLabel("Use o botão '↻ Girar 90°' para ajustar a orientação de fotos de celular.")
         lbl_info.setStyleSheet("color: #64748b; font-size: 12px;")
         bottom_bar.addWidget(lbl_info)
         bottom_bar.addStretch()
@@ -249,37 +295,86 @@ class PhotoComparatorDialog(QDialog):
         if arquivo:
             self.definir_imagem_depois(Path(arquivo))
 
+    def _carregar_qimage_com_exif(self, path: Path) -> Optional[QImage]:
+        """Carrega a imagem corrigindo automaticamente a orientação EXIF de celulares."""
+        try:
+            with Image.open(str(path)) as pil_img:
+                pil_img = ImageOps.exif_transpose(pil_img)
+                pil_img = pil_img.convert("RGBA")
+                data = pil_img.tobytes("raw", "RGBA")
+                qimg = QImage(data, pil_img.width, pil_img.height, QImage.Format_RGBA8888).copy()
+                return qimg
+        except Exception:
+            qimg = QImage(str(path))
+            return qimg if not qimg.isNull() else None
+
     def definir_imagem_antes(self, path: Path):
         self.path_antes = path
-        pix = QPixmap(str(path))
-        if not pix.isNull():
-            scaled = pix.scaled(self.lbl_img_antes.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.lbl_img_antes.setPixmap(scaled)
-            self.lbl_img_antes.setText("")
+        self.rotacao_antes = 0
+        self.img_antes_base = self._carregar_qimage_com_exif(path)
+        self.atualizar_preview_antes()
 
     def definir_imagem_depois(self, path: Path):
         self.path_depois = path
-        pix = QPixmap(str(path))
-        if not pix.isNull():
-            scaled = pix.scaled(self.lbl_img_depois.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.lbl_img_depois.setPixmap(scaled)
-            self.lbl_img_depois.setText("")
+        self.rotacao_depois = 0
+        self.img_depois_base = self._carregar_qimage_com_exif(path)
+        self.atualizar_preview_depois()
+
+    def girar_imagem_antes(self):
+        if not self.img_antes_base:
+            return
+        self.rotacao_antes = (self.rotacao_antes + 90) % 360
+        self.atualizar_preview_antes()
+
+    def girar_imagem_depois(self):
+        if not self.img_depois_base:
+            return
+        self.rotacao_depois = (self.rotacao_depois + 90) % 360
+        self.atualizar_preview_depois()
+
+    def _obter_imagem_rotacionada(self, qimg: QImage, angulo: int) -> QImage:
+        if angulo % 360 == 0:
+            return qimg
+        transform = QTransform().rotate(angulo)
+        return qimg.transformed(transform, Qt.SmoothTransformation)
+
+    def atualizar_preview_antes(self):
+        if not self.img_antes_base:
+            return
+        img_rot = self._obter_imagem_rotacionada(self.img_antes_base, self.rotacao_antes)
+        pix = QPixmap.fromImage(img_rot)
+        scaled = pix.scaled(self.lbl_img_antes.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.lbl_img_antes.setPixmap(scaled)
+        self.lbl_img_antes.setText("")
+
+    def atualizar_preview_depois(self):
+        if not self.img_depois_base:
+            return
+        img_rot = self._obter_imagem_rotacionada(self.img_depois_base, self.rotacao_depois)
+        pix = QPixmap.fromImage(img_rot)
+        scaled = pix.scaled(self.lbl_img_depois.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.lbl_img_depois.setPixmap(scaled)
+        self.lbl_img_depois.setText("")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.img_antes_base:
+            self.atualizar_preview_antes()
+        if self.img_depois_base:
+            self.atualizar_preview_depois()
 
     def gerar_imagem_composta(self) -> Optional[QImage]:
         """Cria uma imagem composta de alta resolução com cabeçalho oficial e o Antes e Depois."""
-        if not self.path_antes or not self.path_depois:
+        if not self.img_antes_base or not self.img_depois_base:
             QMessageBox.warning(self, "Aviso", "Selecione as fotos do Antes e do Depois para gerar o comparativo.")
             return None
 
-        img_a = QImage(str(self.path_antes))
-        img_d = QImage(str(self.path_depois))
-        if img_a.isNull() or img_d.isNull():
-            QMessageBox.critical(self, "Erro", "Não foi possível carregar as imagens selecionadas.")
-            return None
+        img_a = self._obter_imagem_rotacionada(self.img_antes_base, self.rotacao_antes)
+        img_d = self._obter_imagem_rotacionada(self.img_depois_base, self.rotacao_depois)
 
         # Dimensões da imagem final
         w_quadro = 600
-        h_quadro = 450
+        h_quadro = 500
         w_total = (w_quadro * 2) + 60
         h_total = h_quadro + 180
 
@@ -357,16 +452,16 @@ class PhotoComparatorDialog(QDialog):
         if not img:
             return
 
+        import tempfile
         hoje_slug = datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_dir = Path(__file__).resolve().parent.parent / "data" / "temp"
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.gettempdir())
         temp_file = temp_dir / f"comparativo_antes_depois_{hoje_slug}.png"
 
         img.save(str(temp_file), "PNG")
 
         ok, msg = add_attachment(
             patient_id=self.patient_id,
-            file_path=str(temp_file),
+            source_file_path=str(temp_file),
             user_id=self.current_user["id"],
             user_nome=self.current_user["nome"]
         )

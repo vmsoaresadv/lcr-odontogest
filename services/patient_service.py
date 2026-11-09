@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Dict
 from database.connection import get_db_connection
 from services.audit_service import log_action
+from version import get_app_dir
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = get_app_dir()
 UPLOADS_DIR = BASE_DIR / "uploads" / "patients"
 
 
@@ -616,6 +617,47 @@ def delete_attachment(attachment_id: int, user_id: int, user_nome: str) -> Tuple
         return True, "Anexo excluído com sucesso."
     except Exception as e:
         return False, f"Erro ao excluir anexo: {e}"
+    finally:
+        conn.close()
+
+
+def rename_attachment(attachment_id: int, novo_nome: str, user_id: int, user_nome: str) -> Tuple[bool, str]:
+    """Renomeia o nome de exibição de um anexo."""
+    novo_nome = novo_nome.strip()
+    if not novo_nome:
+        return False, "O nome do arquivo não pode ser vazio."
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT patient_id, caminho_arquivo, nome_arquivo FROM patient_attachments WHERE id = ?", (attachment_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False, "Anexo não encontrado."
+
+        nome_antigo = row["nome_arquivo"]
+        caminho_antigo = Path(row["caminho_arquivo"])
+        ext_original = caminho_antigo.suffix
+
+        # Garante que mantenha a extensão original caso o usuário não tenha digitado
+        if ext_original and not novo_nome.lower().endswith(ext_original.lower()):
+            novo_nome = f"{novo_nome}{ext_original}"
+
+        cursor.execute("""
+            UPDATE patient_attachments
+            SET nome_arquivo = ?
+            WHERE id = ?
+        """, (novo_nome, attachment_id))
+        conn.commit()
+
+        log_action(user_id, user_nome, "ANEXO_RENOMEADO",
+                   f"Anexo #{attachment_id} renomeado de '{nome_antigo}' para '{novo_nome}' na ficha #{row['patient_id']}")
+        return True, "Arquivo renomeado com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao renomear anexo: {e}"
     finally:
         conn.close()
 

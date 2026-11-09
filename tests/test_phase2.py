@@ -112,8 +112,15 @@ def test_phase2():
     assert anexos[0]["nome_arquivo"] == "test_raiox.txt"
     print(f"[OK] Arquivo anexado com sucesso na pasta uploads/patients/{p_id}/")
 
-    # 7. Excluir anexo
+    # 7. Testar Renomear e Excluir anexo
     att_id = anexos[0]["id"]
+    from services.patient_service import rename_attachment
+    ok_ren, msg_ren = rename_attachment(att_id, "Foto_RaioX_Tratado.txt", 1, "Dra. Lara Camila")
+    assert ok_ren, msg_ren
+    anexos_ren = list_attachments(p_id)
+    assert anexos_ren[0]["nome_arquivo"] == "Foto_RaioX_Tratado.txt"
+    print("[OK] Renomeação de anexo validada com sucesso.")
+
     ok_del_att, msg_del_att = delete_attachment(att_id, 1, "Dra. Lara Camila")
     assert ok_del_att, msg_del_att
     assert len(list_attachments(p_id)) == 0

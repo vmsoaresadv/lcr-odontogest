@@ -15,7 +15,7 @@ from services.patient_service import (
     update_patient, delete_patient, restore_patient,
     delete_patient_permanently, add_record, update_record, get_record,
     list_records, delete_record, add_attachment,
-    list_attachments, open_attachment, delete_attachment,
+    list_attachments, open_attachment, delete_attachment, rename_attachment,
     format_cpf, format_telefone, format_data_br,
     get_patient_anamnese
 )
@@ -799,6 +799,11 @@ class PatientDetailDialog(QDialog):
         btn_abrir_anexo.clicked.connect(self.abrir_anexo_selecionado)
         anexos_bottom_bar.addWidget(btn_abrir_anexo)
 
+        btn_renomear_anexo = QPushButton("Renomear")
+        btn_renomear_anexo.setObjectName("secondaryBtn")
+        btn_renomear_anexo.clicked.connect(self.renomear_anexo_selecionado)
+        anexos_bottom_bar.addWidget(btn_renomear_anexo)
+
         btn_excluir_anexo = QPushButton("Excluir")
         btn_excluir_anexo.setObjectName("dangerBtn")
         btn_excluir_anexo.clicked.connect(self.excluir_anexo_selecionado)
@@ -1060,6 +1065,36 @@ class PatientDetailDialog(QDialog):
         ok, msg = open_attachment(attachment_id)
         if not ok:
             QMessageBox.warning(self, "Erro", msg)
+
+    def renomear_anexo_selecionado(self):
+        selected = self.table_anexos.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Aviso", "Selecione um anexo na tabela para renomear.")
+            return
+
+        row = selected[0].row()
+        att_id = int(self.table_anexos.item(row, 0).text())
+        nome_atual = self.table_anexos.item(row, 1).text()
+
+        from PySide6.QtWidgets import QInputDialog
+        novo_nome, ok = QInputDialog.getText(
+            self,
+            "Renomear Anexo",
+            "Novo nome para o arquivo:",
+            QLineEdit.Normal,
+            nome_atual
+        )
+        if ok and novo_nome.strip():
+            from services.patient_service import rename_attachment
+            sucesso, msg = rename_attachment(
+                att_id, novo_nome.strip(),
+                self.current_user["id"], self.current_user["nome"]
+            )
+            if sucesso:
+                QMessageBox.information(self, "Sucesso", msg)
+                self.carregar_anexos()
+            else:
+                QMessageBox.critical(self, "Erro", msg)
 
     def excluir_anexo_selecionado(self):
         selected = self.table_anexos.selectionModel().selectedRows()

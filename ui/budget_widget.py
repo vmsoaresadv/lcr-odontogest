@@ -133,9 +133,6 @@ class BudgetFormDialog(QDialog):
         """)
         layout.addWidget(self.table_itens)
 
-        # Adiciona 1 linha inicial padrão
-        self.adicionar_linha_item()
-
         # Bloco de Totais e Desconto
         h_totais = QHBoxLayout()
         v_obs = QVBoxLayout()
@@ -170,6 +167,9 @@ class BudgetFormDialog(QDialog):
 
         h_totais.addWidget(card_valores, stretch=1)
         layout.addLayout(h_totais)
+
+        # Adiciona 1 linha inicial padrão agora que spin_desconto existe
+        self.adicionar_linha_item()
 
         # Botões de Ação
         h_botoes = QHBoxLayout()
@@ -242,7 +242,7 @@ class BudgetFormDialog(QDialog):
             if lbl_sub:
                 lbl_sub.setText(f"R$ {sub:,.2f}")
 
-        desconto = self.spin_desconto.value()
+        desconto = self.spin_desconto.value() if hasattr(self, 'spin_desconto') else 0.0
         total_final = max(0.0, total_bruto - desconto)
 
         self.lbl_bruto.setText(f"Subtotal: R$ {total_bruto:,.2f}")
