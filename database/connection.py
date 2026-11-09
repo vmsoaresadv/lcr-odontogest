@@ -301,6 +301,48 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_fin_status ON financial_transactions(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_fin_rental ON financial_transactions(rental_id);")
 
+    # 15. Tabela de Anamnese Odontológica Completa
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS patient_anamnese (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER UNIQUE NOT NULL,
+            queixa_principal TEXT,
+            historico_doenca_atual TEXT,
+            hipertensao INTEGER DEFAULT 0,
+            diabetes INTEGER DEFAULT 0,
+            cardiopatia INTEGER DEFAULT 0,
+            problema_coagulacao INTEGER DEFAULT 0,
+            doenca_renal_hepatica INTEGER DEFAULT 0,
+            gestante_lactante INTEGER DEFAULT 0,
+            fumante INTEGER DEFAULT 0,
+            bruxismo INTEGER DEFAULT 0,
+            alergias_medicamentos TEXT,
+            alergia_latex INTEGER DEFAULT 0,
+            medicamentos_uso TEXT,
+            historico_cirurgico TEXT,
+            observacoes TEXT,
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_anamnese_patient ON patient_anamnese(patient_id);")
+
+    # 16. Tabela do Odontograma Interativo (Mapeamento de dentes por paciente)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS patient_odontograma (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER NOT NULL,
+            numero_dente INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'higido',
+            faces TEXT DEFAULT '',
+            observacoes TEXT DEFAULT '',
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(patient_id, numero_dente),
+            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_odonto_patient ON patient_odontograma(patient_id);")
+
     # Migrações suaves para tabelas existentes
     try:
         cursor.execute("ALTER TABLE patients ADD COLUMN data_ultimo_atendimento_manual TEXT;")

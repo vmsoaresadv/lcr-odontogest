@@ -10,6 +10,10 @@ from PySide6.QtCore import QSizeF, QMarginsF
 from database.connection import get_db_connection
 from services.financial_service import get_dre_resumido, search_transactions
 from services.inventory_service import search_items, get_inventory_kpis
+from services.patient_service import (
+    get_patient_anamnese, get_patient_odontograma,
+    NOMES_DENTES, STATUS_DENTE_CORES
+)
 from services.audit_service import log_action
 from version import APP_NAME, CLINICA_NOME, RESPONSAVEL_NOME, RESPONSAVEL_CRO, CIDADE_ESTADO
 
@@ -67,7 +71,7 @@ def gerar_rodape_html() -> str:
 
 
 def gerar_html_ficha_paciente(paciente_id: int) -> str:
-    """Gera a Ficha Cadastral e Clínica do Paciente para Impressão/PDF."""
+    """Gera a Ficha Cadastral, Anamnese, Odontograma e Histórico Clínico do Paciente para Impressão/PDF."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM patients WHERE id = ?", (paciente_id,))
@@ -91,8 +95,56 @@ def gerar_html_ficha_paciente(paciente_id: int) -> str:
     if nasc and len(nasc) == 10 and "-" in nasc:
         nasc = datetime.strptime(nasc, "%Y-%m-%d").strftime("%d/%m/%Y")
 
-    alergias = p_dict.get("alergias") or "Nenhuma alergia relatada"
-    obs_medicas = p_dict.get("observacoes_medicas") or "Nenhuma restrição clínica relatada"
+    # Carrega Anamnese e Odontograma
+    anamnese = get_patient_anamnese(paciente_id)
+    odonto = get_patient_odontograma(paciente_id)
+
+    # Formatação de Doenças Sistêmicas
+    doencas = []
+    if anamnese.get("hipertensao"): doencas.append("<strong style='color:#e11d48;'>Hipertensão Arterial</strong>")
+    if anamnese.get("diabetes"): doencas.append("<strong style='color:#a16207;'>Diabetes Mellitus</strong>")
+    if anamnese.get("cardiopatia"): doencas.append("<strong style='color:#be185d;'>Cardiopatia</strong>")
+    if anamnese.get("problema_coagulacao"): doencas.append("<strong style='color:#c2410c;'>Distúrbio de Coagulação</strong>")
+    if anamnese.get("doenca_renal_hepatica"): doencas.append("Doença Renal/Hepática")
+    if anamnese.get("gestante_lactante"): doencas.append("Gestante/Lactante")
+    if anamnese.get("fumante"): doencas.append("Fumante")
+    if anamnese.get("bruxismo"): doencas.append("Bruxismo/Apertamento")
+    str_doencas = ", ".join(doencas) if doencas else "Nenhuma doença sistêmica relatada"
+
+    alergias_txt = anamnese.get("alergias_medicamentos") or p_dict.get("alergias") or "Nenhuma alergia relatada"
+    if anamnese.get("alergia_latex"):
+        alergias_txt += " (Alérgico a Látex)"
+
+    meds_txt = anamnese.get("medicamentos_uso") or "Nenhum medicamento contínuo relatado"
+    queixa_txt = anamnese.get("queixa_principal") or "Consulta e avaliação geral"
+
+    # Linhas do Odontograma (dentes com anotações)
+    linhas_odonto = ""
+    dentes_alterados = [d for d in odonto.values() if d.get("status") != "higido"]
+    if not dentes_alterados:
+        linhas_odonto = """
+        <tr>
+            <td colspan="4" style="text-align: center; color: #166260; padding: 10px; font-size: 11pt; background-color: #f0fdf4;">
+                ✓ Todos os 32 dentes registrados como <strong>Hígidos / Sadios</strong> no momento do exame.
+            </td>
+        </tr>
+        """
+    else:
+        for d in sorted(dentes_alterados, key=lambda x: x["numero_dente"]):
+            num = d["numero_dente"]
+            nome_d = NOMES_DENTES.get(num, f"Dente {num}")
+            st_cfg = STATUS_DENTE_CORES.get(d["status"], STATUS_DENTE_CORES["higido"])
+            faces_str = d.get("faces") or "-"
+            obs_d = d.get("observacoes") or "-"
+
+            linhas_odonto += f"""
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 6px 8px; font-size: 11pt; font-weight: bold;">Dente {num}</td>
+                <td style="padding: 6px 8px; font-size: 11pt; color: #475569;">{nome_d}</td>
+                <td style="padding: 6px 8px; font-size: 11pt; font-weight: bold; color: {st_cfg['cor']};">{st_cfg['nome']} (Faces: {faces_str})</td>
+                <td style="padding: 6px 8px; font-size: 11pt; color: #334155;">{obs_d}</td>
+            </tr>
+            """
 
     linhas_atendimentos = ""
     if not prontuarios:
@@ -116,13 +168,14 @@ def gerar_html_ficha_paciente(paciente_id: int) -> str:
             procedimento = item.get("procedimento") or "Consulta Geral"
             descricao = item.get("descricao") or "-"
             dentista = item.get("profissional_nome") or RESPONSAVEL_NOME
+            dente = item.get("dente_regiao") or "Geral"
 
             linhas_atendimentos += f"""
             <tr style="border-bottom: 1px solid #e2e8f0;">
-                <td style="padding: 10px 8px; font-size: 12pt; color: #334155;">{dh_fmt}</td>
-                <td style="padding: 10px 8px; font-size: 12pt; font-weight: bold; color: #0f766e;">{procedimento}</td>
-                <td style="padding: 10px 8px; font-size: 12pt; color: #1e293b;">{descricao}</td>
-                <td style="padding: 10px 8px; font-size: 12pt; color: #475569;">{dentista}</td>
+                <td style="padding: 8px 6px; font-size: 11pt; color: #334155;">{dh_fmt}</td>
+                <td style="padding: 8px 6px; font-size: 11pt; font-weight: bold; color: #0f766e;">{procedimento} ({dente})</td>
+                <td style="padding: 8px 6px; font-size: 11pt; color: #1e293b;">{descricao}</td>
+                <td style="padding: 8px 6px; font-size: 11pt; color: #475569;">{dentista}</td>
             </tr>
             """
 
@@ -133,11 +186,11 @@ def gerar_html_ficha_paciente(paciente_id: int) -> str:
         <meta charset="utf-8">
         <style>
             body {{ font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #0f172a; margin: 10px; }}
-            .secao-titulo {{ font-size: 13pt; font-weight: bold; color: #0f766e; background-color: #f0fdfa; padding: 8px 12px; border-left: 5px solid #0d9488; margin-top: 18px; margin-bottom: 12px; }}
-            table.info-tabela {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; }}
-            table.info-tabela td {{ padding: 8px; font-size: 12pt; }}
-            table.grade-tabela {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-            table.grade-tabela th {{ background-color: #f8fafc; color: #334155; font-size: 12pt; font-weight: bold; text-align: left; padding: 10px 8px; border-bottom: 2px solid #cbd5e1; }}
+            .secao-titulo {{ font-size: 13pt; font-weight: bold; color: #0f766e; background-color: #f0fdfa; padding: 7px 12px; border-left: 5px solid #0d9488; margin-top: 16px; margin-bottom: 10px; }}
+            table.info-tabela {{ width: 100%; border-collapse: collapse; margin-bottom: 12px; }}
+            table.info-tabela td {{ padding: 6px 8px; font-size: 12pt; }}
+            table.grade-tabela {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+            table.grade-tabela th {{ background-color: #f8fafc; color: #334155; font-size: 11pt; font-weight: bold; text-align: left; padding: 8px 6px; border-bottom: 2px solid #cbd5e1; }}
         </style>
     </head>
     <body>
@@ -159,26 +212,49 @@ def gerar_html_ficha_paciente(paciente_id: int) -> str:
             </tr>
         </table>
 
-        <div class="secao-titulo">2. ANAMNESE E RESTRIÇÕES MÉDICAS</div>
+        <div class="secao-titulo">2. ANAMNESE CLÍNICA E HISTÓRICO DE SAÚDE</div>
         <table class="info-tabela">
             <tr>
+                <td colspan="2"><strong>Queixa Principal / Motivo:</strong> {queixa_txt}</td>
+            </tr>
+            <tr>
                 <td style="width: 50%;">
-                    <strong style="color: #dc2626;">Alergias Conhecidas:</strong><br>
-                    <span style="color: #7f1d1d; font-size: 12pt;">{alergias}</span>
+                    <strong style="color: #dc2626;">Alergias / Restrições:</strong><br>
+                    <span style="color: #7f1d1d; font-size: 11pt;">{alergias_txt}</span>
                 </td>
                 <td style="width: 50%;">
-                    <strong>Observações Clínicas / Histórico Médico:</strong><br>
-                    <span style="font-size: 12pt;">{obs_medicas}</span>
+                    <strong>Condições / Doenças Sistêmicas:</strong><br>
+                    <span style="font-size: 11pt;">{str_doencas}</span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2">
+                    <strong>Medicamentos em Uso Contínuo:</strong> {meds_txt}
                 </td>
             </tr>
         </table>
 
-        <div class="secao-titulo">3. HISTÓRICO DE PROCEDIMENTOS E EVOLUÇÕES CLÍNICAS</div>
+        <div class="secao-titulo">3. ODONTOGRAMA (MAPA DE DENTES E INTERVENÇÕES)</div>
         <table class="grade-tabela">
             <thead>
                 <tr>
-                    <th style="width: 22%;">Data / Hora</th>
-                    <th style="width: 28%;">Procedimento</th>
+                    <th style="width: 15%;">Dente</th>
+                    <th style="width: 30%;">Nome Anatômico</th>
+                    <th style="width: 30%;">Condição Clínica / Faces</th>
+                    <th style="width: 25%;">Observações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {linhas_odonto}
+            </tbody>
+        </table>
+
+        <div class="secao-titulo">4. HISTÓRICO DE PROCEDIMENTOS E EVOLUÇÕES CLÍNICAS</div>
+        <table class="grade-tabela">
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Data / Hora</th>
+                    <th style="width: 30%;">Procedimento (Região)</th>
                     <th style="width: 32%;">Evolução Clínica</th>
                     <th style="width: 18%;">Profissional</th>
                 </tr>

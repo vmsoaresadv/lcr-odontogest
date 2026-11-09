@@ -119,10 +119,49 @@ def test_phase2():
     assert len(list_attachments(p_id)) == 0
     print("[OK] Exclusão de anexo funcionando fisicamente e no banco.")
 
-    # 8. Testar Logs de Auditoria LGPD
+    # 8. Testar Anamnese e Odontograma
+    from services.patient_service import (
+        save_patient_anamnese, get_patient_anamnese,
+        save_tooth_status, get_patient_odontograma
+    )
+    ok_an, msg_an = save_patient_anamnese(
+        p_id,
+        data={
+            "queixa_principal": "Dor no dente 16 ao mastigar",
+            "hipertensao": 1,
+            "alergias_medicamentos": "Amoxicilina",
+            "medicamentos_uso": "Losartana 50mg",
+        },
+        user_id=1,
+        user_nome="Dra. Lara Camila"
+    )
+    assert ok_an, msg_an
+    anamnese = get_patient_anamnese(p_id)
+    assert anamnese is not None
+    assert anamnese["hipertensao"] == 1
+    assert anamnese["medicamentos_uso"] == "Losartana 50mg"
+    print("[OK] Módulo de Anamnese validado com sucesso.")
+
+    ok_od, msg_od = save_tooth_status(
+        p_id,
+        numero_dente=16,
+        status="Cárie",
+        faces="O, M",
+        observacoes="Cárie oclusal e mesial profunda",
+        user_id=1,
+        user_nome="Dra. Lara Camila"
+    )
+    assert ok_od, msg_od
+    odontograma = get_patient_odontograma(p_id)
+    assert 16 in odontograma
+    assert odontograma[16]["status"] == "Cárie"
+    assert odontograma[16]["faces"] == "O, M"
+    print("[OK] Módulo de Odontograma validado com sucesso.")
+
+    # 9. Testar Logs de Auditoria LGPD
     logs = get_audit_logs()
-    assert len(logs) >= 4
-    print(f"[OK] Trilha de auditoria da Fase 2 gravou {len(logs)} eventos de pacientes/prontuários.")
+    assert len(logs) >= 6
+    print(f"[OK] Trilha de auditoria da Fase 2 gravou {len(logs)} eventos de pacientes/prontuários/anamnese/odontograma.")
 
     # Limpeza
     if TEST_DB_PATH.exists():

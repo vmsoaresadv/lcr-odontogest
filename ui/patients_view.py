@@ -16,9 +16,12 @@ from services.patient_service import (
     delete_patient_permanently, add_record, update_record, get_record,
     list_records, delete_record, add_attachment,
     list_attachments, open_attachment, delete_attachment,
-    format_cpf, format_telefone, format_data_br
+    format_cpf, format_telefone, format_data_br,
+    get_patient_anamnese
 )
 from ui.custom_date_edit import CustomDateEdit
+from ui.odontograma_widget import OdontogramaWidget
+from ui.anamnese_widget import AnamneseWidget
 
 def aplicar_mascara_cpf(texto: str) -> str:
     """Aplica máscara progressiva de CPF: 000.000.000-00."""
@@ -461,12 +464,15 @@ class PatientFormDialog(QDialog):
 
 class RecordFormDialog(QDialog):
     """Diálogo completo para cadastrar ou editar Procedimento / Evolução Clínica Odontológica."""
-    def __init__(self, patient_id: int, current_user: dict, record: Optional[dict] = None, parent=None):
+    def __init__(self, patient_id: int, current_user: dict, record: Optional[dict] = None,
+                 prefill_dente: str = "", prefill_procedimento: str = "", parent=None):
         super().__init__(parent)
         self.patient_id = patient_id
         self.current_user = current_user
         self.record = record
         self.is_edit = record is not None
+        self.prefill_dente = prefill_dente
+        self.prefill_procedimento = prefill_procedimento
         titulo = f"Editar Procedimento #{record['id']}" if self.is_edit else "Cadastrar Procedimento do Paciente"
         self.setWindowTitle(titulo)
         self.setFixedSize(500, 440)
@@ -530,6 +536,11 @@ class RecordFormDialog(QDialog):
             self.txt_descricao.setText(rec.get("descricao") or "")
             if rec.get("data_hora"):
                 self.dt_proc.setDate(str(rec["data_hora"])[:10])
+        elif not self.is_edit:
+            if self.prefill_dente:
+                self.txt_dente.setText(self.prefill_dente)
+            if self.prefill_procedimento:
+                self.cmb_procedimento.setCurrentText(self.prefill_procedimento)
 
         layout.addSpacing(10)
 
@@ -585,14 +596,14 @@ NewRecordDialog = RecordFormDialog
 
 
 class PatientDetailDialog(QDialog):
-    """Ficha Clínica Completa com Prontuário, Anexos (Raio-X) e Atestados."""
+    """Ficha Clínica Completa com Odontograma, Anamnese, Prontuário, Anexos e Atestados."""
     def __init__(self, patient_id: int, current_user: dict, parent=None):
         super().__init__(parent)
         self.patient_id = patient_id
         self.current_user = current_user
         self.patient = get_patient(patient_id)
         self.setWindowTitle(f"Ficha Clínica - {self.patient['nome']}")
-        self.resize(900, 650)
+        self.resize(1080, 740)
         self.setStyleSheet(PATIENT_STYLE)
         self.init_ui()
 
@@ -621,19 +632,11 @@ class PatientDetailDialog(QDialog):
         h_layout.addLayout(info_box)
         h_layout.addStretch()
 
-        # Alerta de Alergia em Destaque se houver
-        if self.patient.get("alergias"):
-            alergia_badge = QLabel(f"⚠️ Alergia: {self.patient['alergias']}")
-            alergia_badge.setStyleSheet("""
-                background-color: #fef2f2;
-                color: #b91c1c;
-                font-weight: bold;
-                border: 1px solid #fecaca;
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 12px;
-            """)
-            h_layout.addWidget(alergia_badge)
+        # Layout dinâmico de Alertas e Condições Médicas (Alergias, Hipertensão, Diabetes...)
+        self.box_badges = QHBoxLayout()
+        self.box_badges.setSpacing(6)
+        h_layout.addLayout(self.box_badges)
+        self.atualizar_badges_saude()
 
         btn_editar_cadastro = QPushButton("Editar Dados")
         btn_editar_cadastro.setObjectName("secondaryBtn")
@@ -642,10 +645,20 @@ class PatientDetailDialog(QDialog):
 
         main_layout.addWidget(header_card)
 
-        # Abas
+        # Abas da Ficha do Paciente
         self.tabs = QTabWidget(self)
 
-        # Aba 1: Prontuário Odontológico
+        # Aba 1: Odontograma Interativo (FDI)
+        self.tab_odontograma = OdontogramaWidget(self.patient_id, self.current_user, self)
+        self.tab_odontograma.procedimento_solicitado.connect(self.abrir_procedimento_com_dente)
+        self.tabs.addTab(self.tab_odontograma, "🦷 Odontograma Interativo")
+
+        # Aba 2: Anamnese Odontológica Completa
+        self.tab_anamnese = AnamneseWidget(self.patient_id, self.current_user, self)
+        self.tab_anamnese.anamnese_atualizada.connect(self.ao_anamnese_atualizada)
+        self.tabs.addTab(self.tab_anamnese, "📋 Anamnese Clínica")
+
+        # Aba 3: Prontuário Odontológico
         tab_prontuario = QWidget()
         layout_pront = QVBoxLayout(tab_prontuario)
         layout_pront.setSpacing(10)
@@ -850,10 +863,111 @@ class PatientDetailDialog(QDialog):
             item_tam.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table_anexos.setItem(row_idx, 3, item_tam)
 
+    def atualizar_badges_saude(self, anamnese_data: Optional[dict] = None):
+        """Atualiza dinamicamente as etiquetas de alerta clínico no cabeçalho."""
+        # Limpa badges anteriores
+        while self.box_badges.count() > 0:
+            item = self.box_badges.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        anamnese = anamnese_data or get_patient_anamnese(self.patient_id)
+        alergias = self.patient.get("alergias") or anamnese.get("alergias_medicamentos")
+
+        # 1. Alergia
+        if alergias:
+            b_alergia = QLabel(f"⚠️ Alergia: {alergias}")
+            b_alergia.setStyleSheet("""
+                background-color: #fef2f2;
+                color: #b91c1c;
+                font-weight: bold;
+                border: 1px solid #fecaca;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+            """)
+            self.box_badges.addWidget(b_alergia)
+
+        # 2. Hipertensão
+        if anamnese.get("hipertensao"):
+            b_hip = QLabel("🩸 Hipertensão")
+            b_hip.setStyleSheet("""
+                background-color: #fff1f2;
+                color: #e11d48;
+                font-weight: bold;
+                border: 1px solid #fecdd3;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            """)
+            self.box_badges.addWidget(b_hip)
+
+        # 3. Diabetes
+        if anamnese.get("diabetes"):
+            b_diab = QLabel("💉 Diabetes")
+            b_diab.setStyleSheet("""
+                background-color: #fefce8;
+                color: #a16207;
+                font-weight: bold;
+                border: 1px solid #fef08a;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            """)
+            self.box_badges.addWidget(b_diab)
+
+        # 4. Cardiopatia
+        if anamnese.get("cardiopatia"):
+            b_card = QLabel("🫀 Cardiopata")
+            b_card.setStyleSheet("""
+                background-color: #fdf2f8;
+                color: #be185d;
+                font-weight: bold;
+                border: 1px solid #fbcfe8;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            """)
+            self.box_badges.addWidget(b_card)
+
+        # 5. Distúrbio de Coagulação
+        if anamnese.get("problema_coagulacao"):
+            b_coag = QLabel("⚠️ Coagulação")
+            b_coag.setStyleSheet("""
+                background-color: #fff7ed;
+                color: #c2410c;
+                font-weight: bold;
+                border: 1px solid #ffedd5;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            """)
+            self.box_badges.addWidget(b_coag)
+
+    def ao_anamnese_atualizada(self, dados: dict):
+        self.patient = get_patient(self.patient_id)
+        self.atualizar_badges_saude(dados)
+
+    def abrir_procedimento_com_dente(self, numero_dente: int, proc_sugerido: str):
+        """Abre o cadastro de procedimento já com o dente do Odontograma preenchido."""
+        dialog = RecordFormDialog(
+            self.patient_id, self.current_user,
+            prefill_dente=f"Dente {numero_dente}",
+            prefill_procedimento=proc_sugerido,
+            parent=self
+        )
+        if dialog.exec() == QDialog.Accepted:
+            self.carregar_prontuario()
+            self.tab_odontograma.carregar_odontograma()
+            # Alterna para a aba de Procedimentos para visualização imediata
+            self.tabs.setCurrentIndex(2)
+
     def abrir_novo_procedimento(self):
         dialog = RecordFormDialog(self.patient_id, self.current_user, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.carregar_prontuario()
+            if hasattr(self, "tab_odontograma"):
+                self.tab_odontograma.carregar_odontograma()
 
     def abrir_editar_procedimento(self):
         selected = self.table_records.selectionModel().selectedRows()

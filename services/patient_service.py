@@ -618,3 +618,229 @@ def delete_attachment(attachment_id: int, user_id: int, user_nome: str) -> Tuple
         return False, f"Erro ao excluir anexo: {e}"
     finally:
         conn.close()
+
+
+# ==============================================================================
+# SERVIÇOS DE ANAMNESE ODONTOLÓGICA
+# ==============================================================================
+
+def get_patient_anamnese(patient_id: int) -> dict:
+    """Retorna a anamnese completa do paciente. Cria estrutura padrão se ainda não existir."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM patient_anamnese WHERE patient_id = ?", (patient_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        # Se ainda não existe, tenta herdar alergias/obs_medicas do cadastro base do paciente
+        cursor.execute("SELECT alergias, observacoes_medicas FROM patients WHERE id = ?", (patient_id,))
+        p_row = cursor.fetchone()
+        alergias_ini = p_row["alergias"] if p_row and p_row["alergias"] else ""
+        obs_ini = p_row["observacoes_medicas"] if p_row and p_row["observacoes_medicas"] else ""
+        conn.close()
+        return {
+            "patient_id": patient_id,
+            "queixa_principal": "",
+            "historico_doenca_atual": "",
+            "hipertensao": 0,
+            "diabetes": 0,
+            "cardiopatia": 0,
+            "problema_coagulacao": 0,
+            "doenca_renal_hepatica": 0,
+            "gestante_lactante": 0,
+            "fumante": 0,
+            "bruxismo": 0,
+            "alergias_medicamentos": alergias_ini,
+            "alergia_latex": 0,
+            "medicamentos_uso": "",
+            "historico_cirurgico": "",
+            "observacoes": obs_ini,
+            "atualizado_em": ""
+        }
+
+    conn.close()
+    return dict(row)
+
+
+def save_patient_anamnese(patient_id: int, data: dict, user_id: int, user_nome: str) -> Tuple[bool, str]:
+    """Salva ou atualiza a ficha de anamnese odontológica do paciente."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO patient_anamnese (
+                patient_id, queixa_principal, historico_doenca_atual,
+                hipertensao, diabetes, cardiopatia, problema_coagulacao,
+                doenca_renal_hepatica, gestante_lactante, fumante, bruxismo,
+                alergias_medicamentos, alergia_latex, medicamentos_uso,
+                historico_cirurgico, observacoes, atualizado_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(patient_id) DO UPDATE SET
+                queixa_principal = excluded.queixa_principal,
+                historico_doenca_atual = excluded.historico_doenca_atual,
+                hipertensao = excluded.hipertensao,
+                diabetes = excluded.diabetes,
+                cardiopatia = excluded.cardiopatia,
+                problema_coagulacao = excluded.problema_coagulacao,
+                doenca_renal_hepatica = excluded.doenca_renal_hepatica,
+                gestante_lactante = excluded.gestante_lactante,
+                fumante = excluded.fumante,
+                bruxismo = excluded.bruxismo,
+                alergias_medicamentos = excluded.alergias_medicamentos,
+                alergia_latex = excluded.alergia_latex,
+                medicamentos_uso = excluded.medicamentos_uso,
+                historico_cirurgico = excluded.historico_cirurgico,
+                observacoes = excluded.observacoes,
+                atualizado_em = excluded.atualizado_em
+        """, (
+            patient_id,
+            data.get("queixa_principal", "").strip(),
+            data.get("historico_doenca_atual", "").strip(),
+            1 if data.get("hipertensao") else 0,
+            1 if data.get("diabetes") else 0,
+            1 if data.get("cardiopatia") else 0,
+            1 if data.get("problema_coagulacao") else 0,
+            1 if data.get("doenca_renal_hepatica") else 0,
+            1 if data.get("gestante_lactante") else 0,
+            1 if data.get("fumante") else 0,
+            1 if data.get("bruxismo") else 0,
+            data.get("alergias_medicamentos", "").strip(),
+            1 if data.get("alergia_latex") else 0,
+            data.get("medicamentos_uso", "").strip(),
+            data.get("historico_cirurgico", "").strip(),
+            data.get("observacoes", "").strip(),
+            agora
+        ))
+
+        # Sincroniza campos essenciais no cadastro do paciente (alergias e alertas)
+        alergias_resumo = []
+        if data.get("alergias_medicamentos", "").strip():
+            alergias_resumo.append(data.get("alergias_medicamentos", "").strip())
+        if data.get("alergia_latex"):
+            alergias_resumo.append("Látex")
+        str_alergias = ", ".join(alergias_resumo)
+
+        cursor.execute("""
+            UPDATE patients
+            SET alergias = ?, atualizado_em = ?
+            WHERE id = ?
+        """, (str_alergias, agora, patient_id))
+
+        conn.commit()
+
+        log_action(user_id, user_nome, "ANAMNESE_ATUALIZADA",
+                   f"Anamnese odontológica do paciente #{patient_id} atualizada com sucesso.")
+        return True, "Anamnese salva com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao salvar anamnese: {e}"
+    finally:
+        conn.close()
+
+
+# ==============================================================================
+# SERVIÇOS DO ODONTOGRAMA INTERATIVO (FDI)
+# ==============================================================================
+
+# Dentes Permanentes Padrão FDI:
+# Arcada Superior: 18..11 (Q1 Direito) e 21..28 (Q2 Esquerdo)
+# Arcada Inferior: 48..41 (Q4 Direito) e 31..38 (Q3 Esquerdo)
+DENTES_FDI_SUPERIORES = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
+DENTES_FDI_INFERIORES = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
+
+NOMES_DENTES = {
+    18: "Terceiro Molar Sup. Dir.", 17: "Segundo Molar Sup. Dir.", 16: "Primeiro Molar Sup. Dir.",
+    15: "Segundo Pré-Molar Sup. Dir.", 14: "Primeiro Pré-Molar Sup. Dir.", 13: "Canino Sup. Dir.",
+    12: "Incisivo Lateral Sup. Dir.", 11: "Incisivo Central Sup. Dir.",
+    21: "Incisivo Central Sup. Esq.", 22: "Incisivo Lateral Sup. Esq.", 23: "Canino Sup. Esq.",
+    24: "Primeiro Pré-Molar Sup. Esq.", 25: "Segundo Pré-Molar Sup. Esq.", 26: "Primeiro Molar Sup. Esq.",
+    27: "Segundo Molar Sup. Esq.", 28: "Terceiro Molar Sup. Esq.",
+    48: "Terceiro Molar Inf. Dir.", 47: "Segundo Molar Inf. Dir.", 46: "Primeiro Molar Inf. Dir.",
+    45: "Segundo Pré-Molar Inf. Dir.", 44: "Primeiro Pré-Molar Inf. Dir.", 43: "Canino Inf. Dir.",
+    42: "Incisivo Lateral Inf. Dir.", 41: "Incisivo Central Inf. Dir.",
+    31: "Incisivo Central Inf. Esq.", 32: "Incisivo Lateral Inf. Esq.", 33: "Canino Inf. Esq.",
+    34: "Primeiro Pré-Molar Inf. Esq.", 35: "Segundo Pré-Molar Inf. Esq.", 36: "Primeiro Molar Inf. Esq.",
+    37: "Segundo Molar Inf. Esq.", 38: "Terceiro Molar Inf. Esq."
+}
+
+STATUS_DENTE_CORES = {
+    "higido": {"nome": "Hígido / Sadio", "cor": "#10b981", "badge": "✓ Hígido"},
+    "carie": {"nome": "Cárie / A Tratar", "cor": "#ef4444", "badge": "● Cárie"},
+    "restaurado": {"nome": "Restaurado", "cor": "#3b82f6", "badge": "■ Restaurado"},
+    "canal": {"nome": "Canal / Endodontia", "cor": "#f59e0b", "badge": "⚡ Canal"},
+    "protese": {"nome": "Prótese / Coroa", "cor": "#8b5cf6", "badge": "👑 Prótese"},
+    "implante": {"nome": "Implante", "cor": "#06b6d4", "badge": "🔩 Implante"},
+    "ausente": {"nome": "Ausente / Extraído", "cor": "#64748b", "badge": "✕ Ausente"}
+}
+
+
+def get_patient_odontograma(patient_id: int) -> Dict[int, dict]:
+    """Retorna o mapa de todos os dentes com seu status atual no odontograma."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT numero_dente, status, faces, observacoes, atualizado_em
+        FROM patient_odontograma
+        WHERE patient_id = ?
+    """, (patient_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    resultado = {}
+    for r in rows:
+        resultado[r["numero_dente"]] = {
+            "numero_dente": r["numero_dente"],
+            "status": r["status"],
+            "faces": r["faces"] or "",
+            "observacoes": r["observacoes"] or "",
+            "atualizado_em": r["atualizado_em"]
+        }
+    return resultado
+
+
+def save_tooth_status(patient_id: int, numero_dente: int, status: str, faces: str,
+                       observacoes: str, user_id: int, user_nome: str) -> Tuple[bool, str]:
+    """Atualiza ou insere o status de um dente específico no odontograma."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO patient_odontograma (
+                patient_id, numero_dente, status, faces, observacoes, atualizado_em
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(patient_id, numero_dente) DO UPDATE SET
+                status = excluded.status,
+                faces = excluded.faces,
+                observacoes = excluded.observacoes,
+                atualizado_em = excluded.atualizado_em
+        """, (patient_id, numero_dente, status, faces.strip(), observacoes.strip(), agora))
+        conn.commit()
+
+        nome_dente = NOMES_DENTES.get(numero_dente, f"Dente {numero_dente}")
+        status_label = STATUS_DENTE_CORES.get(status, {}).get("nome", status)
+        log_action(user_id, user_nome, "ODONTOGRAMA_ATUALIZADO",
+                   f"{nome_dente} atualizado para '{status_label}' no paciente #{patient_id}")
+        return True, "Dente atualizado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao atualizar dente: {e}"
+    finally:
+        conn.close()
+
+
+def reset_odontograma(patient_id: int, user_id: int, user_nome: str) -> Tuple[bool, str]:
+    """Limpa as anotações do odontograma retornando todos os dentes para o estado inicial hígido."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM patient_odontograma WHERE patient_id = ?", (patient_id,))
+        conn.commit()
+        log_action(user_id, user_nome, "ODONTOGRAMA_RESET", f"Odontograma resetado para o paciente #{patient_id}")
+        return True, "Odontograma resetado com sucesso."
+    except Exception as e:
+        return False, f"Erro ao resetar: {e}"
+    finally:
+        conn.close()
