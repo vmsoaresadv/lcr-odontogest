@@ -620,12 +620,12 @@ class PatientDetailDialog(QDialog):
 
         info_box = QVBoxLayout()
         info_box.setSpacing(4)
-        lbl_nome = QLabel(f"👤 {self.patient['nome']}")
-        lbl_nome.setStyleSheet("font-size: 18px; font-weight: bold; color: #166260;")
+        lbl_nome = QLabel(self.patient['nome'])
+        lbl_nome.setStyleSheet("font-size: 19px; font-weight: 700; color: #0f766e; letter-spacing: -0.3px;")
         
-        detalhes = f"CPF: {self.patient['cpf'] or 'Não informado'}  •  Nascimento: {self.patient['data_nascimento'] or 'Não informada'}  •  Tel: {self.patient['telefone'] or 'Não informado'}"
+        detalhes = f"CPF: {self.patient['cpf'] or 'Não informado'}   |   Nascimento: {self.patient['data_nascimento'] or 'Não informada'}   |   Telefone: {self.patient['telefone'] or 'Não informado'}"
         lbl_detalhes = QLabel(detalhes)
-        lbl_detalhes.setStyleSheet("color: #64748b; font-size: 13px;")
+        lbl_detalhes.setStyleSheet("color: #64748b; font-size: 13px; font-weight: 500;")
 
         info_box.addWidget(lbl_nome)
         info_box.addWidget(lbl_detalhes)
@@ -638,7 +638,7 @@ class PatientDetailDialog(QDialog):
         h_layout.addLayout(self.box_badges)
         self.atualizar_badges_saude()
 
-        btn_editar_cadastro = QPushButton("Editar Dados")
+        btn_editar_cadastro = QPushButton("Editar Cadastro")
         btn_editar_cadastro.setObjectName("secondaryBtn")
         btn_editar_cadastro.clicked.connect(self.abrir_edicao_cadastro)
         h_layout.addWidget(btn_editar_cadastro)
@@ -648,15 +648,15 @@ class PatientDetailDialog(QDialog):
         # Abas da Ficha do Paciente
         self.tabs = QTabWidget(self)
 
-        # Aba 1: Odontograma Interativo (FDI)
+        # Aba 1: Odontograma Anatômico (FDI)
         self.tab_odontograma = OdontogramaWidget(self.patient_id, self.current_user, self)
         self.tab_odontograma.procedimento_solicitado.connect(self.abrir_procedimento_com_dente)
-        self.tabs.addTab(self.tab_odontograma, "🦷 Odontograma Interativo")
+        self.tabs.addTab(self.tab_odontograma, "Odontograma Clínico")
 
         # Aba 2: Anamnese Odontológica Completa
         self.tab_anamnese = AnamneseWidget(self.patient_id, self.current_user, self)
         self.tab_anamnese.anamnese_atualizada.connect(self.ao_anamnese_atualizada)
-        self.tabs.addTab(self.tab_anamnese, "📋 Anamnese Clínica")
+        self.tabs.addTab(self.tab_anamnese, "Anamnese Odontológica")
 
         # Aba 3: Prontuário Odontológico
         tab_prontuario = QWidget()
@@ -664,22 +664,22 @@ class PatientDetailDialog(QDialog):
         layout_pront.setSpacing(10)
 
         pront_actions = QHBoxLayout()
-        lbl_pront_title = QLabel("Procedimentos Realizados no Paciente")
-        lbl_pront_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #166260;")
+        lbl_pront_title = QLabel("Histórico de Procedimentos e Evolução")
+        lbl_pront_title.setStyleSheet("font-size: 15px; font-weight: 700; color: #0f766e;")
         pront_actions.addWidget(lbl_pront_title)
         pront_actions.addStretch()
 
-        btn_novo_procedimento = QPushButton("➕ Cadastrar Procedimento")
+        btn_novo_procedimento = QPushButton("+ Novo Procedimento")
         btn_novo_procedimento.setObjectName("primaryBtn")
         btn_novo_procedimento.clicked.connect(self.abrir_novo_procedimento)
         pront_actions.addWidget(btn_novo_procedimento)
 
-        btn_editar_procedimento = QPushButton("✏️ Editar Procedimento")
+        btn_editar_procedimento = QPushButton("Editar")
         btn_editar_procedimento.setObjectName("secondaryBtn")
         btn_editar_procedimento.clicked.connect(self.abrir_editar_procedimento)
         pront_actions.addWidget(btn_editar_procedimento)
 
-        btn_remover_rec = QPushButton("🗑️ Excluir Procedimento")
+        btn_remover_rec = QPushButton("Excluir")
         btn_remover_rec.setObjectName("dangerBtn")
         btn_remover_rec.clicked.connect(self.excluir_procedimento_selecionado)
         pront_actions.addWidget(btn_remover_rec)
@@ -715,15 +715,15 @@ class PatientDetailDialog(QDialog):
         """)
         layout_pront.addWidget(self.table_records)
 
-        self.tabs.addTab(tab_prontuario, "🦷 Procedimentos e Prontuário")
+        self.tabs.addTab(tab_prontuario, "Prontuário e Evolução")
 
-        # Aba 2: Anexos e Exames (Raio-X)
+        # Aba 4: Anexos e Exames (Raio-X)
         tab_anexos = QWidget()
         layout_anexos = QVBoxLayout(tab_anexos)
         layout_anexos.setSpacing(10)
 
         anexos_actions = QHBoxLayout()
-        lbl_anexos_title = QLabel("Galeria de Exames, Raio-X e Documentos")
+        lbl_anexos_title = QLabel("Galeria de Exames, Radiografias e Documentos")
         lbl_anexos_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #166260;")
         anexos_actions.addWidget(lbl_anexos_title)
         anexos_actions.addStretch()
@@ -765,30 +765,30 @@ class PatientDetailDialog(QDialog):
         layout_anexos.addWidget(self.table_anexos)
 
         anexos_bottom_bar = QHBoxLayout()
-        lbl_dica = QLabel("💡 Dica: Duplo clique na linha para abrir o arquivo no visualizador do Windows.")
+        lbl_dica = QLabel("Dica: Dê duplo clique na linha para abrir o arquivo no visualizador do Windows.")
         lbl_dica.setStyleSheet("color: #64748b; font-size: 12px;")
         anexos_bottom_bar.addWidget(lbl_dica)
         anexos_bottom_bar.addStretch()
 
-        btn_abrir_anexo = QPushButton("👁️ Abrir / Visualizar")
+        btn_abrir_anexo = QPushButton("Visualizar Arquivo")
         btn_abrir_anexo.setObjectName("primaryBtn")
         btn_abrir_anexo.clicked.connect(self.abrir_anexo_selecionado)
         anexos_bottom_bar.addWidget(btn_abrir_anexo)
 
-        btn_excluir_anexo = QPushButton("Excluir Anexo")
+        btn_excluir_anexo = QPushButton("Excluir")
         btn_excluir_anexo.setObjectName("dangerBtn")
         btn_excluir_anexo.clicked.connect(self.excluir_anexo_selecionado)
         anexos_bottom_bar.addWidget(btn_excluir_anexo)
 
         layout_anexos.addLayout(anexos_bottom_bar)
-        self.tabs.addTab(tab_anexos, "📁 Raio-X e Anexos")
+        self.tabs.addTab(tab_anexos, "Exames e Anexos")
 
-        # Aba 3: Declaração / Atestado Odontológico
+        # Aba 5: Declaração / Atestado Odontológico
         tab_atestado = QWidget()
         layout_atestado = QVBoxLayout(tab_atestado)
         layout_atestado.setSpacing(10)
 
-        lbl_atestado_title = QLabel("Emissão Rápida de Declaração / Atestado")
+        lbl_atestado_title = QLabel("Emissão de Atestado / Declaração de Comparecimento")
         lbl_atestado_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #166260;")
         layout_atestado.addWidget(lbl_atestado_title)
 
@@ -799,7 +799,7 @@ class PatientDetailDialog(QDialog):
             f"DECLARAÇÃO DE COMPARECIMENTO ODONTOLÓGICO\n\n"
             f"Declaro para os devidos fins que o(a) paciente {self.patient['nome']}, "
             f"portador(a) do CPF nº {self.patient['cpf'] or '___________________'}, compareceu a esta clínica odontológica "
-            f"no dia {hoje}, às {hora} horas, para realização de procedimento odontológico.\n\n\n"
+            f"no dia {hoje}, às {hora} horas, para realização de atendimento odontológico.\n\n\n"
             f"_____________________________________________\n"
             f"Dra. Lara Camila • Cirurgiã-Dentista\n"
             f"CRO-BA 15247 • LCR Clínica Odontológica\n"
@@ -808,12 +808,12 @@ class PatientDetailDialog(QDialog):
         self.txt_atestado.setPlainText(texto_padrao)
         layout_atestado.addWidget(self.txt_atestado)
 
-        btn_copiar = QPushButton("📋 Copiar Texto do Atestado")
+        btn_copiar = QPushButton("Copiar Texto do Atestado")
         btn_copiar.setObjectName("primaryBtn")
         btn_copiar.clicked.connect(self.copiar_atestado)
         layout_atestado.addWidget(btn_copiar, alignment=Qt.AlignRight)
 
-        self.tabs.addTab(tab_atestado, "📄 Atestado / Declaração")
+        self.tabs.addTab(tab_atestado, "Atestados e Documentos")
 
         main_layout.addWidget(self.tabs)
 

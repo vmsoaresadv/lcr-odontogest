@@ -744,13 +744,20 @@ def save_patient_anamnese(patient_id: int, data: dict, user_id: int, user_nome: 
 # SERVIÇOS DO ODONTOGRAMA INTERATIVO (FDI)
 # ==============================================================================
 
-# Dentes Permanentes Padrão FDI:
+# Dentes Permanentes Padrão FDI (Adulto - 32 dentes):
 # Arcada Superior: 18..11 (Q1 Direito) e 21..28 (Q2 Esquerdo)
 # Arcada Inferior: 48..41 (Q4 Direito) e 31..38 (Q3 Esquerdo)
 DENTES_FDI_SUPERIORES = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
 DENTES_FDI_INFERIORES = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
 
+# Dentes Decíduos Padrão FDI (Infantil / Pediátrico - 20 dentes):
+# Arcada Superior Decídua: 55..51 (Q5 Direito) e 61..65 (Q6 Esquerdo)
+# Arcada Inferior Decídua: 85..81 (Q8 Direito) e 71..75 (Q7 Esquerdo)
+DENTES_DECIDUOS_SUPERIORES = [55, 54, 53, 52, 51, 61, 62, 63, 64, 65]
+DENTES_DECIDUOS_INFERIORES = [85, 84, 83, 82, 81, 71, 72, 73, 74, 75]
+
 NOMES_DENTES = {
+    # Dentição Permanente (Adulto)
     18: "Terceiro Molar Sup. Dir.", 17: "Segundo Molar Sup. Dir.", 16: "Primeiro Molar Sup. Dir.",
     15: "Segundo Pré-Molar Sup. Dir.", 14: "Primeiro Pré-Molar Sup. Dir.", 13: "Canino Sup. Dir.",
     12: "Incisivo Lateral Sup. Dir.", 11: "Incisivo Central Sup. Dir.",
@@ -762,7 +769,17 @@ NOMES_DENTES = {
     42: "Incisivo Lateral Inf. Dir.", 41: "Incisivo Central Inf. Dir.",
     31: "Incisivo Central Inf. Esq.", 32: "Incisivo Lateral Inf. Esq.", 33: "Canino Inf. Esq.",
     34: "Primeiro Pré-Molar Inf. Esq.", 35: "Segundo Pré-Molar Inf. Esq.", 36: "Primeiro Molar Inf. Esq.",
-    37: "Segundo Molar Inf. Esq.", 38: "Terceiro Molar Inf. Esq."
+    37: "Segundo Molar Inf. Esq.", 38: "Terceiro Molar Inf. Esq.",
+
+    # Dentição Decídua (Infantil)
+    55: "Segundo Molar Decíduo Sup. Dir.", 54: "Primeiro Molar Decíduo Sup. Dir.",
+    53: "Canino Decíduo Sup. Dir.", 52: "Incisivo Lateral Decíduo Sup. Dir.", 51: "Incisivo Central Decíduo Sup. Dir.",
+    61: "Incisivo Central Decíduo Sup. Esq.", 62: "Incisivo Lateral Decíduo Sup. Esq.",
+    63: "Canino Decíduo Sup. Esq.", 64: "Primeiro Molar Decíduo Sup. Esq.", 65: "Segundo Molar Decíduo Sup. Esq.",
+    85: "Segundo Molar Decíduo Inf. Dir.", 84: "Primeiro Molar Decíduo Inf. Dir.",
+    83: "Canino Decíduo Inf. Dir.", 82: "Incisivo Lateral Decíduo Inf. Dir.", 81: "Incisivo Central Decíduo Inf. Dir.",
+    71: "Incisivo Central Decíduo Inf. Esq.", 72: "Incisivo Lateral Decíduo Inf. Esq.",
+    73: "Canino Decíduo Inf. Esq.", 74: "Primeiro Molar Decíduo Inf. Esq.", 75: "Segundo Molar Decíduo Inf. Esq."
 }
 
 STATUS_DENTE_CORES = {

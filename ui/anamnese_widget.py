@@ -27,24 +27,24 @@ class AnamneseWidget(QWidget):
 
         # Barra de Ações do Topo
         top_bar = QHBoxLayout()
-        lbl_titulo = QLabel("📋 Questionário e Histórico de Saúde Odontológica")
+        lbl_titulo = QLabel("Questionário e Histórico de Saúde Odontológica")
         lbl_titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #0f766e;")
         top_bar.addWidget(lbl_titulo)
         top_bar.addStretch()
 
-        self.btn_salvar_top = QPushButton("💾 Salvar Anamnese")
+        self.btn_salvar_top = QPushButton("Salvar Anamnese")
         self.btn_salvar_top.setStyleSheet("""
             QPushButton {
-                background-color: #0d9488;
+                background-color: #0f766e;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 12px;
-                padding: 7px 16px;
+                padding: 7px 18px;
                 border-radius: 6px;
                 border: none;
             }
             QPushButton:hover {
-                background-color: #0f766e;
+                background-color: #115e59;
             }
         """)
         self.btn_salvar_top.clicked.connect(self.salvar_anamnese)
@@ -83,8 +83,8 @@ class AnamneseWidget(QWidget):
         box_doencas.setStyleSheet(self._estilo_box("#b91c1c"))
         v_doencas = QVBoxLayout(box_doencas)
 
-        lbl_aviso = QLabel("⚠️ Marque as condições que o paciente apresenta (gera alertas na tela e prontuário):")
-        lbl_aviso.setStyleSheet("color: #991b1b; font-size: 11px; font-weight: 500; margin-bottom: 4px;")
+        lbl_aviso = QLabel("Atenção: Marque as condições que o paciente apresenta (gera alertas na tela e prontuário):")
+        lbl_aviso.setStyleSheet("color: #b91c1c; font-size: 11px; font-weight: 600; margin-bottom: 4px;")
         v_doencas.addWidget(lbl_aviso)
 
         grid_doencas = QGridLayout()
@@ -163,19 +163,19 @@ class AnamneseWidget(QWidget):
         layout.addWidget(box_obs)
 
         # Botão Salvar Rodapé
-        btn_salvar_bottom = QPushButton("💾 Salvar Anamnese do Paciente")
+        btn_salvar_bottom = QPushButton("Salvar Anamnese do Paciente")
         btn_salvar_bottom.setStyleSheet("""
             QPushButton {
-                background-color: #0d9488;
+                background-color: #0f766e;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 13px;
-                padding: 10px 20px;
+                padding: 10px 22px;
                 border-radius: 6px;
                 border: none;
             }
             QPushButton:hover {
-                background-color: #0f766e;
+                background-color: #115e59;
             }
         """)
         btn_salvar_bottom.clicked.connect(self.salvar_anamnese)
