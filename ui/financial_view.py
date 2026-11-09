@@ -1215,11 +1215,17 @@ class FinancialView(QWidget):
 
         period_bar.addStretch()
 
-        btn_dre = QPushButton("📊 DRE Simplificado")
-        btn_dre.setObjectName("secondaryBtn")
-        btn_dre.setToolTip("Visualizar demonstrativo de resultados e receitas por meio de pagamento")
-        btn_dre.clicked.connect(self.abrir_dre)
-        period_bar.addWidget(btn_dre)
+        self.btn_dre = QPushButton("DRE Simplificado")
+        self.btn_dre.setObjectName("secondaryBtn")
+        self.btn_dre.setToolTip("Visualizar demonstrativo de resultados e receitas por meio de pagamento")
+        self.btn_dre.clicked.connect(self.abrir_dre)
+        period_bar.addWidget(self.btn_dre)
+
+        # Restrição de Perfil: Secretária não tem acesso a relatórios e DRE da clínica
+        if self.current_user.get("perfil") == "secretaria":
+            self.btn_dre.setVisible(False)
+            self.card_rec.setVisible(False)
+            self.card_saldo.setVisible(False)
 
         layout.addLayout(period_bar)
 
@@ -1482,14 +1488,20 @@ class FinancialView(QWidget):
 
         # 2. Atualiza Indicadores KPIs
         kpis = get_financial_kpis(d_ini_str, d_fim_str)
-        self.card_rec.lbl_valor.setText(f"R$ {kpis['total_receitas']:.2f}".replace('.', ','))
-        self.card_desp.lbl_valor.setText(f"R$ {kpis['total_despesas']:.2f}".replace('.', ','))
+        if self.current_user.get("perfil") == "secretaria":
+            self.card_rec.setVisible(False)
+            self.card_saldo.setVisible(False)
+            self.card_rec.lbl_valor.setText("---")
+            self.card_saldo.lbl_valor.setText("---")
+        else:
+            self.card_rec.lbl_valor.setText(f"R$ {kpis['total_receitas']:.2f}".replace('.', ','))
+            saldo = kpis["saldo_liquido"]
+            sinal = "+" if saldo >= 0 else ""
+            cor_saldo = "#0f766e" if saldo >= 0 else "#dc2626"
+            self.card_saldo.lbl_valor.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {cor_saldo};")
+            self.card_saldo.lbl_valor.setText(f"{sinal}R$ {saldo:.2f}".replace('.', ','))
 
-        saldo = kpis["saldo_liquido"]
-        sinal = "+" if saldo >= 0 else ""
-        cor_saldo = "#0f766e" if saldo >= 0 else "#dc2626"
-        self.card_saldo.lbl_valor.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {cor_saldo};")
-        self.card_saldo.lbl_valor.setText(f"{sinal}R$ {saldo:.2f}".replace('.', ','))
+        self.card_desp.lbl_valor.setText(f"R$ {kpis['total_despesas']:.2f}".replace('.', ','))
 
         pend_rec = kpis["pendente_receber"]
         pend_pag = kpis["pendente_pagar"]
@@ -1645,6 +1657,14 @@ class FinancialView(QWidget):
             QMessageBox.warning(self, "Erro", f"Não foi possível abrir o arquivo: {e}")
 
     def abrir_dre(self):
+        if self.current_user.get("perfil") == "secretaria":
+            QMessageBox.warning(
+                self,
+                "Acesso Restrito",
+                "O Demonstrativo de Resultados (DRE) e relatórios financeiros globais são restritos à administração da clínica."
+            )
+            return
+
         if self.cmb_periodo.currentText() == "Personalizado":
             d_ini = self.dt_filtro_ini.date()
             d_fim = self.dt_filtro_fim.date()

@@ -22,6 +22,8 @@ from services.patient_service import (
 from ui.custom_date_edit import CustomDateEdit
 from ui.odontograma_widget import OdontogramaWidget
 from ui.anamnese_widget import AnamneseWidget
+from ui.budget_widget import BudgetWidget
+from ui.photo_comparator_dialog import PhotoComparatorDialog
 
 def aplicar_mascara_cpf(texto: str) -> str:
     """Aplica máscara progressiva de CPF: 000.000.000-00."""
@@ -658,7 +660,11 @@ class PatientDetailDialog(QDialog):
         self.tab_anamnese.anamnese_atualizada.connect(self.ao_anamnese_atualizada)
         self.tabs.addTab(self.tab_anamnese, "Anamnese Odontológica")
 
-        # Aba 3: Prontuário Odontológico
+        # Aba 3: Orçamentos e Planos de Tratamento
+        self.tab_orcamentos = BudgetWidget(self.patient_id, self.current_user, self)
+        self.tabs.addTab(self.tab_orcamentos, "Orçamentos e Planos")
+
+        # Aba 4: Prontuário Odontológico
         tab_prontuario = QWidget()
         layout_pront = QVBoxLayout(tab_prontuario)
         layout_pront.setSpacing(10)
@@ -727,6 +733,24 @@ class PatientDetailDialog(QDialog):
         lbl_anexos_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #166260;")
         anexos_actions.addWidget(lbl_anexos_title)
         anexos_actions.addStretch()
+
+        btn_comparador = QPushButton("Comparador Antes e Depois")
+        btn_comparador.setObjectName("secondaryBtn")
+        btn_comparador.setStyleSheet("""
+            QPushButton {
+                background-color: #0f766e;
+                color: #ffffff;
+                font-weight: bold;
+                padding: 6px 14px;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #115e59;
+            }
+        """)
+        btn_comparador.clicked.connect(self.abrir_comparador_fotos)
+        anexos_actions.addWidget(btn_comparador)
 
         btn_anexar = QPushButton("+ Anexar Arquivo (Raio-X, Foto, PDF)")
         btn_anexar.setObjectName("primaryBtn")
@@ -1006,6 +1030,11 @@ class PatientDetailDialog(QDialog):
                 self.carregar_prontuario()
             else:
                 QMessageBox.critical(self, "Erro", msg)
+
+    def abrir_comparador_fotos(self):
+        diag = PhotoComparatorDialog(self.patient_id, self.current_user, self)
+        diag.exec()
+        self.carregar_anexos()
 
     def anexar_arquivo(self):
         filepath, _ = QFileDialog.getOpenFileName(

@@ -343,6 +343,45 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_odonto_patient ON patient_odontograma(patient_id);")
 
+    # 17. Tabela de Orçamentos e Planos de Tratamento Odontológico
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS patient_budgets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER NOT NULL,
+            titulo TEXT NOT NULL,
+            valor_bruto REAL NOT NULL DEFAULT 0.0,
+            desconto REAL NOT NULL DEFAULT 0.0,
+            valor_final REAL NOT NULL DEFAULT 0.0,
+            forma_pagamento TEXT,
+            status TEXT NOT NULL CHECK(status IN ('Pendente', 'Aprovado', 'Recusado', 'Concluído')) DEFAULT 'Pendente',
+            observacoes TEXT,
+            data_criacao TEXT NOT NULL,
+            data_aprovacao TEXT,
+            aprovado_por TEXT,
+            user_id INTEGER NOT NULL,
+            user_nome TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_patient ON patient_budgets(patient_id);")
+
+    # 18. Tabela de Itens do Orçamento
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS patient_budget_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            budget_id INTEGER NOT NULL,
+            dente_regiao TEXT,
+            procedimento TEXT NOT NULL,
+            quantidade INTEGER NOT NULL DEFAULT 1,
+            valor_unitario REAL NOT NULL DEFAULT 0.0,
+            valor_total REAL NOT NULL DEFAULT 0.0,
+            FOREIGN KEY(budget_id) REFERENCES patient_budgets(id) ON DELETE CASCADE
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items ON patient_budget_items(budget_id);")
+
     # Migrações suaves para tabelas existentes
     try:
         cursor.execute("ALTER TABLE patients ADD COLUMN data_ultimo_atendimento_manual TEXT;")

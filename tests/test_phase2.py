@@ -158,10 +158,43 @@ def test_phase2():
     assert odontograma[16]["faces"] == "O, M"
     print("[OK] Módulo de Odontograma validado com sucesso.")
 
-    # 9. Testar Logs de Auditoria LGPD
+    # 9. Testar Orçamentos com Aprovação
+    from services.budget_service import (
+        create_budget, list_budgets, get_budget_details, aprovar_orcamento
+    )
+    ok_bg, msg_bg, b_id = create_budget(
+        patient_id=p_id,
+        titulo="Tratamento Clareador e Restauração 16",
+        itens=[
+            {"dente_regiao": "Dente 16", "procedimento": "Restauração em Resina Composta", "quantidade": 1, "valor_unitario": 250.0},
+            {"dente_regiao": "Arcada Completa", "procedimento": "Clareamento de Consultório", "quantidade": 1, "valor_unitario": 800.0}
+        ],
+        desconto=50.0,
+        forma_pagamento="3x Cartão",
+        observacoes="Validade 30 dias",
+        user_id=1,
+        user_nome="Dra. Lara Camila"
+    )
+    assert ok_bg, msg_bg
+    bg_details = get_budget_details(b_id)
+    assert bg_details["valor_bruto"] == 1050.0
+    assert bg_details["desconto"] == 50.0
+    assert bg_details["valor_final"] == 1000.0
+    assert len(bg_details["itens"]) == 2
+
+    # Aprovar e lançar no prontuário
+    ok_ap, msg_ap = aprovar_orcamento(b_id, lancar_no_prontuario=True, user_id=1, user_nome="Dra. Lara Camila")
+    assert ok_ap, msg_ap
+    bg_aprov = get_budget_details(b_id)
+    assert bg_aprov["status"] == "Aprovado"
+    records_apos = list_records(p_id)
+    assert any("Orçamento #" in r["descricao"] for r in records_apos)
+    print("[OK] Módulo de Orçamentos com aprovação e integração ao prontuário validado com sucesso.")
+
+    # 10. Testar Logs de Auditoria LGPD
     logs = get_audit_logs()
-    assert len(logs) >= 6
-    print(f"[OK] Trilha de auditoria da Fase 2 gravou {len(logs)} eventos de pacientes/prontuários/anamnese/odontograma.")
+    assert len(logs) >= 8
+    print(f"[OK] Trilha de auditoria gravou {len(logs)} eventos.")
 
     # Limpeza
     if TEST_DB_PATH.exists():
