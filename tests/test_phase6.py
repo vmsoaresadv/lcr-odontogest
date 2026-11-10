@@ -194,6 +194,129 @@ class TestPhase6Financial(unittest.TestCase):
         self.assertEqual(txs[0]["forma_pagamento"], "Cartão de Crédito")
         self.assertIn("Dr. Rafael", txs[0]["descricao"])
 
+    def test_nota_fiscal_flow(self):
+        # 1. Cria transação com Nota Fiscal
+        ok, msg, tid = fin_svc.create_transaction(
+            tipo="Receita",
+            categoria="Procedimentos Clínicos / Consultas",
+            descricao="Restauração Estética c/ NF",
+            valor=350.0,
+            data_competencia="2026-11-09",
+            status="Pago",
+            forma_pagamento="Pix",
+            nota_fiscal_emitida=1,
+            numero_nota_fiscal="NF-2026-99"
+        )
+        self.assertTrue(ok)
+        self.assertIsNotNone(tid)
+
+        t = fin_svc.get_transaction(tid)
+        self.assertIsNotNone(t)
+        self.assertEqual(t["nota_fiscal_emitida"], 1)
+        self.assertEqual(t["numero_nota_fiscal"], "NF-2026-99")
+
+        # 2. Atualiza transação
+        ok, msg = fin_svc.update_transaction(
+            trans_id=tid,
+            tipo="Receita",
+            categoria="Procedimentos Clínicos / Consultas",
+            descricao="Restauração Estética c/ NF Atualizada",
+            valor=400.0,
+            data_competencia="2026-11-09",
+            status="Pago",
+            forma_pagamento="Pix",
+            nota_fiscal_emitida=0,
+            numero_nota_fiscal=None
+        )
+        self.assertTrue(ok)
+        t2 = fin_svc.get_transaction(tid)
+        self.assertEqual(t2["nota_fiscal_emitida"], 0)
+        self.assertIsNone(t2["numero_nota_fiscal"])
+
+        # 3. Baixa rápida com marcação de NF
+        ok, msg, tid2 = fin_svc.create_transaction(
+            tipo="Receita",
+            categoria="Outras Receitas",
+            descricao="Procedimento Pendente",
+            valor=200.0,
+            data_competencia="2026-11-09",
+            status="Pendente",
+            forma_pagamento="Boleto"
+        )
+        self.assertTrue(ok)
+        ok, msg = fin_svc.marcar_como_pago(
+            trans_id=tid2,
+            data_pagamento="2026-11-09",
+            forma_pagamento="Pix",
+            nota_fiscal_emitida=1,
+            numero_nota_fiscal="NF-1001"
+        )
+        self.assertTrue(ok)
+        t_baixa = fin_svc.get_transaction(tid2)
+        self.assertEqual(t_baixa["status"], "Pago")
+        self.assertEqual(t_baixa["nota_fiscal_emitida"], 1)
+        self.assertEqual(t_baixa["numero_nota_fiscal"], "NF-1001")
+
+    def test_recorrente_e_alertas_vencimento(self):
+        # 1. Cria transação recorrente de aluguel
+        ok, msg, tid = fin_svc.create_transaction(
+            tipo="Despesa",
+            categoria="Aluguel, IPTU e Condomínio",
+            descricao="Aluguel Consultório Recorrente",
+            valor=1500.0,
+            data_competencia="2026-11-01",
+            data_vencimento="2026-11-05",
+            status="Pendente",
+            forma_pagamento="Boleto",
+            recorrente=1,
+            dia_vencimento_recorrente=5
+        )
+        self.assertTrue(ok)
+        self.assertIsNotNone(tid)
+
+        # 2. Verifica templates cadastrados
+        templates = fin_svc.list_recurring_templates(apenas_ativos=True)
+        self.assertTrue(any(t["descricao"] == "Aluguel Consultório Recorrente" for t in templates))
+        tmpl = next(t for t in templates if t["descricao"] == "Aluguel Consultório Recorrente")
+        self.assertEqual(tmpl["dia_vencimento"], 5)
+
+        # 3. Geração para o mês seguinte (2026-12)
+        gerados = fin_svc.gerar_transacoes_recorrentes_pendentes(mes_ano_ref="2026-12")
+        self.assertGreaterEqual(gerados, 1)
+
+        # Verifica se gerou o lançamento com vencimento correto
+        txs_dez = fin_svc.search_transactions(data_inicio="2026-12-01", data_fim="2026-12-31")
+        self.assertTrue(any("Aluguel Consultório Recorrente" in t["descricao"] for t in txs_dez))
+        t_dez = next(t for t in txs_dez if "Aluguel Consultório Recorrente" in t["descricao"])
+        self.assertEqual(t_dez["status"], "Pendente")
+        self.assertEqual(str(t_dez["data_vencimento"])[:10], "2026-12-05")
+
+        # 4. Alertas de vencimento:
+        # Se criarmos uma despesa vencendo hoje:
+        from datetime import date
+        hoje_str = date.today().isoformat()
+        ok, msg, tid_hoje = fin_svc.create_transaction(
+            tipo="Despesa",
+            categoria="Insumos e Materiais Dentais",
+            descricao="Dental Cremer Vence Hoje",
+            valor=350.0,
+            data_competencia=hoje_str,
+            data_vencimento=hoje_str,
+            status="Pendente"
+        )
+        self.assertTrue(ok)
+
+        alertas = fin_svc.verificar_alertas_vencimento(dias_antecedencia=1)
+        self.assertTrue(any(a["id"] == tid_hoje for a in alertas))
+        alerta_item = next(a for a in alertas if a["id"] == tid_hoje)
+        self.assertEqual(alerta_item["urgencia"], "hoje")
+        self.assertIn("Hoje", alerta_item["urgencia_label"])
+
+        # 5. Cancela molde de recorrência
+        self.assertTrue(fin_svc.cancel_recurring_template(tmpl["id"]))
+        templates_pos = fin_svc.list_recurring_templates(apenas_ativos=True)
+        self.assertFalse(any(t["id"] == tmpl["id"] for t in templates_pos))
+
 
 if __name__ == "__main__":
     unittest.main()

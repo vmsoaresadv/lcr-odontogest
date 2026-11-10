@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 from database.connection import get_db_connection
 from services.audit_service import log_action
@@ -143,6 +143,10 @@ def create_transaction(
     patient_id: Optional[int] = None,
     rental_id: Optional[int] = None,
     comprovante_path: Optional[str] = None,
+    nota_fiscal_emitida: int = 0,
+    numero_nota_fiscal: Optional[str] = None,
+    recorrente: int = 0,
+    dia_vencimento_recorrente: Optional[int] = None,
     observacoes: Optional[str] = None,
     user_id: Optional[int] = None,
     user_nome: str = "Sistema"
@@ -172,20 +176,42 @@ def create_transaction(
                 tipo, categoria, descricao, valor, data_competencia,
                 data_vencimento, data_pagamento, status, forma_pagamento,
                 parcelas, patient_id, rental_id, comprovante_path,
+                nota_fiscal_emitida, numero_nota_fiscal, recorrente,
                 observacoes, user_id, usuario_nome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             tipo, categoria, descricao, float(valor), data_competencia,
             data_vencimento or data_competencia, data_pagamento, status,
             forma_pagamento, parcelas, patient_id, rental_id,
-            comprovante_path, observacoes, user_id, user_nome
+            comprovante_path, int(nota_fiscal_emitida or 0), numero_nota_fiscal,
+            int(recorrente or 0),
+            observacoes, user_id, user_nome
         ))
         trans_id = cursor.lastrowid
+
+        # Se for recorrente mensal, registra o modelo para gerações futuras automáticas
+        if recorrente:
+            dia_venc = int(dia_vencimento_recorrente or (int(str(data_vencimento or data_competencia)[8:10]) if len(str(data_vencimento or data_competencia)) >= 10 else 10))
+            dia_venc = max(1, min(31, dia_venc))
+            cursor.execute("""
+                INSERT INTO recurring_transactions (
+                    tipo, categoria, descricao, valor, dia_vencimento,
+                    forma_pagamento, patient_id, observacoes, ativo, ultima_geracao_mes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """, (
+                tipo, categoria, descricao, float(valor), dia_venc,
+                forma_pagamento, patient_id, observacoes, str(data_competencia)[:7]
+            ))
+            tmpl_id = cursor.lastrowid
+            cursor.execute("UPDATE financial_transactions SET recorrente_template_id = ? WHERE id = ?", (tmpl_id, trans_id))
+
         conn.commit()
         conn.close()
 
         val_fmt = f"{valor:.2f}".replace('.', ',')
-        log_action(user_id, user_nome, f"FINANCEIRO_{tipo.upper()}_CRIADA", f"{tipo} '{descricao}' de R$ {val_fmt} ({forma_pagamento}, {status}) lançada.")
+        nf_tag = " (NF Emitida)" if nota_fiscal_emitida else ""
+        rec_tag = " [Recorrente Mensal]" if recorrente else ""
+        log_action(user_id, user_nome, f"FINANCEIRO_{tipo.upper()}_CRIADA", f"{tipo} '{descricao}' de R$ {val_fmt} ({forma_pagamento}, {status}{nf_tag}{rec_tag}) lançada.")
         return True, f"{tipo} cadastrada com sucesso!", trans_id
     except Exception as e:
         return False, f"Erro ao registrar lançamento: {e}", None
@@ -210,6 +236,8 @@ def update_transaction(
     parcelas: int = 1,
     patient_id: Optional[int] = None,
     comprovante_path: Optional[str] = None,
+    nota_fiscal_emitida: int = 0,
+    numero_nota_fiscal: Optional[str] = None,
     observacoes: Optional[str] = None,
     user_id: Optional[int] = None,
     user_nome: str = "Sistema"
@@ -234,20 +262,24 @@ def update_transaction(
             SET tipo = ?, categoria = ?, descricao = ?, valor = ?,
                 data_competencia = ?, data_vencimento = ?, data_pagamento = ?,
                 status = ?, forma_pagamento = ?, parcelas = ?,
-                patient_id = ?, comprovante_path = ?, observacoes = ?,
+                patient_id = ?, comprovante_path = ?,
+                nota_fiscal_emitida = ?, numero_nota_fiscal = ?,
+                observacoes = ?,
                 atualizado_em = (datetime('now', 'localtime'))
             WHERE id = ?
         """, (
             tipo, categoria, descricao, float(valor), data_competencia,
             data_vencimento or data_competencia, data_pagamento, status,
             forma_pagamento, parcelas, patient_id, comprovante_path,
+            int(nota_fiscal_emitida or 0), numero_nota_fiscal,
             observacoes, trans_id
         ))
         conn.commit()
         conn.close()
 
         val_fmt = f"{valor:.2f}".replace('.', ',')
-        log_action(user_id, user_nome, "FINANCEIRO_ATUALIZADO", f"Lançamento #{trans_id} atualizado: '{descricao}' (R$ {val_fmt}).")
+        nf_tag = " [NF Emitida]" if nota_fiscal_emitida else ""
+        log_action(user_id, user_nome, "FINANCEIRO_ATUALIZADO", f"Lançamento #{trans_id} atualizado: '{descricao}' (R$ {val_fmt}{nf_tag}).")
         return True, "Lançamento financeiro atualizado com sucesso!"
     except Exception as e:
         return False, f"Erro ao atualizar lançamento: {e}"
@@ -292,6 +324,8 @@ def marcar_como_pago(
     trans_id: int,
     data_pagamento: str,
     forma_pagamento: str,
+    nota_fiscal_emitida: Optional[int] = None,
+    numero_nota_fiscal: Optional[str] = None,
     user_id: Optional[int] = None,
     user_nome: str = "Sistema"
 ) -> Tuple[bool, str]:
@@ -305,17 +339,27 @@ def marcar_como_pago(
             conn.close()
             return False, "Lançamento não encontrado."
 
-        cursor.execute("""
-            UPDATE financial_transactions
-            SET status = 'Pago', data_pagamento = ?, forma_pagamento = ?,
-                atualizado_em = (datetime('now', 'localtime'))
-            WHERE id = ?
-        """, (data_pagamento, forma_pagamento, trans_id))
+        if nota_fiscal_emitida is not None:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET status = 'Pago', data_pagamento = ?, forma_pagamento = ?,
+                    nota_fiscal_emitida = ?, numero_nota_fiscal = ?,
+                    atualizado_em = (datetime('now', 'localtime'))
+                WHERE id = ?
+            """, (data_pagamento, forma_pagamento, int(nota_fiscal_emitida), numero_nota_fiscal, trans_id))
+        else:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET status = 'Pago', data_pagamento = ?, forma_pagamento = ?,
+                    atualizado_em = (datetime('now', 'localtime'))
+                WHERE id = ?
+            """, (data_pagamento, forma_pagamento, trans_id))
         conn.commit()
         conn.close()
 
         val_fmt = f"{t['valor']:.2f}".replace('.', ',')
-        log_action(user_id, user_nome, "FINANCEIRO_BAIXA", f"Baixa efetuada em #{trans_id} '{t['descricao']}' (R$ {val_fmt}) via {forma_pagamento}.")
+        nf_tag = " (com NF-e)" if nota_fiscal_emitida else ""
+        log_action(user_id, user_nome, "FINANCEIRO_BAIXA", f"Baixa efetuada em #{trans_id} '{t['descricao']}' (R$ {val_fmt}) via {forma_pagamento}{nf_tag}.")
         return True, "Lançamento marcado como Pago com sucesso!"
     except Exception as e:
         return False, f"Erro ao marcar como pago: {e}"
@@ -562,3 +606,153 @@ def get_dre_resumido(data_inicio: Optional[str] = None, data_fim: Optional[str] 
         "total_despesas": total_despesas,
         "resultado_liquido": resultado_liquido
     }
+
+
+# =============================================================
+# RECORRÊNCIA E ALERTAS AUTOMÁTICOS DE VENCIMENTO
+# =============================================================
+
+def list_recurring_templates(apenas_ativos: bool = True) -> List[dict]:
+    """Lista os moldes de lançamentos recorrentes cadastrados."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    filtro = "WHERE ativo = 1" if apenas_ativos else ""
+    cursor.execute(f"SELECT * FROM recurring_transactions {filtro} ORDER BY dia_vencimento ASC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def cancel_recurring_template(template_id: int) -> bool:
+    """Desativa um molde de recorrência para não gerar mais lançamentos futuros."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE recurring_transactions SET ativo = 0, atualizado_em = (datetime('now', 'localtime')) WHERE id = ?", (template_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def gerar_transacoes_recorrentes_pendentes(mes_ano_ref: Optional[str] = None) -> int:
+    """
+    Gera automaticamente os lançamentos pendentes das despesas/receitas recorrentes
+    para o mês corrente (ou mes_ano_ref YYYY-MM), caso ainda não tenham sido gerados.
+    Retorna o número de transações geradas.
+    """
+    if not mes_ano_ref:
+        hoje = date.today()
+        mes_ano_ref = hoje.strftime("%Y-%m")
+    else:
+        hoje = datetime.strptime(f"{mes_ano_ref}-01", "%Y-%m-%d").date()
+
+    ano = hoje.year
+    mes = hoje.month
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    gerados = 0
+    try:
+        cursor.execute("SELECT * FROM recurring_transactions WHERE ativo = 1")
+        templates = [dict(r) for r in cursor.fetchall()]
+        for tmpl in templates:
+            # Verifica se já gerou para este mês
+            cursor.execute("""
+                SELECT id FROM financial_transactions
+                WHERE recorrente_template_id = ?
+                  AND strftime('%Y-%m', data_competencia) = ?
+            """, (tmpl["id"], mes_ano_ref))
+            if cursor.fetchone():
+                continue  # Já existe transação gerada para este mês
+
+            # Calcula o dia limite do mês
+            dia_venc = min(tmpl["dia_vencimento"], 28 if mes == 2 else 30)
+            try:
+                dt_venc = date(ano, mes, dia_venc)
+            except ValueError:
+                dt_venc = date(ano, mes, 28)
+
+            dt_comp = date(ano, mes, 1)
+
+            cursor.execute("""
+                INSERT INTO financial_transactions (
+                    tipo, categoria, descricao, valor, data_competencia,
+                    data_vencimento, data_pagamento, status, forma_pagamento,
+                    parcelas, patient_id, recorrente, recorrente_template_id,
+                    observacoes, usuario_nome
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'Pendente', ?, 1, ?, 1, ?, ?, 'Recorrência Automática')
+            """, (
+                tmpl["tipo"], tmpl["categoria"], tmpl["descricao"],
+                float(tmpl["valor"]), dt_comp.isoformat(),
+                dt_venc.isoformat(), tmpl["forma_pagamento"],
+                tmpl.get("patient_id"), tmpl["id"],
+                tmpl.get("observacoes") or "Lançamento recorrente mensal gerado automaticamente."
+            ))
+            cursor.execute("""
+                UPDATE recurring_transactions
+                SET ultima_geracao_mes = ?, atualizado_em = (datetime('now', 'localtime'))
+                WHERE id = ?
+            """, (mes_ano_ref, tmpl["id"]))
+            gerados += 1
+
+        conn.commit()
+    except Exception as e:
+        print(f"Erro ao gerar recorrentes: {e}")
+    finally:
+        conn.close()
+
+    return gerados
+
+
+def verificar_alertas_vencimento(dias_antecedencia: int = 1) -> List[dict]:
+    """
+    Retorna contas a pagar (e a receber) pendentes que:
+    1. Já venceram (atrasadas)
+    2. Vencem hoje
+    3. Vencem nos próximos `dias_antecedencia` dias (ex: amanhã)
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    hoje = date.today()
+    limite = hoje + timedelta(days=dias_antecedencia)
+    limite_str = limite.isoformat()
+
+    try:
+        cursor.execute("""
+            SELECT t.*, p.nome as paciente_nome, p.telefone as paciente_telefone
+            FROM financial_transactions t
+            LEFT JOIN patients p ON t.patient_id = p.id
+            WHERE t.status = 'Pendente'
+              AND t.data_vencimento IS NOT NULL
+              AND t.data_vencimento <= ?
+            ORDER BY t.tipo DESC, t.data_vencimento ASC
+        """, (limite_str,))
+        rows = [dict(r) for r in cursor.fetchall()]
+
+        for r in rows:
+            venc_str = str(r["data_vencimento"])[:10]
+            try:
+                dt_v = datetime.strptime(venc_str, "%Y-%m-%d").date()
+                diff = (dt_v - hoje).days
+                if diff < 0:
+                    r["urgencia"] = "vencida"
+                    r["urgencia_label"] = f"⚠️ Vencida há {abs(diff)} dia(s)"
+                    r["cor_badge"] = "#dc2626"
+                elif diff == 0:
+                    r["urgencia"] = "hoje"
+                    r["urgencia_label"] = "🚨 Vence Hoje!"
+                    r["cor_badge"] = "#ea580c"
+                else:
+                    r["urgencia"] = "amanha"
+                    r["urgencia_label"] = f"⏳ Vence amanhã ({dt_v.strftime('%d/%m')})"
+                    r["cor_badge"] = "#0284c7"
+            except Exception:
+                r["urgencia"] = "indefinida"
+                r["urgencia_label"] = "Pendente"
+                r["cor_badge"] = "#64748b"
+
+        return rows
+    except Exception as e:
+        print(f"Erro ao verificar alertas de vencimento: {e}")
+        return []
+    finally:
+        conn.close()

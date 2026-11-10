@@ -286,6 +286,8 @@ def init_db():
             patient_id INTEGER,
             rental_id INTEGER,
             comprovante_path TEXT,
+            nota_fiscal_emitida INTEGER DEFAULT 0,
+            numero_nota_fiscal TEXT,
             observacoes TEXT,
             user_id INTEGER,
             usuario_nome TEXT NOT NULL,
@@ -382,6 +384,27 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items ON patient_budget_items(budget_id);")
 
+    # 18. Tabela de Lançamentos Recorrentes Mensais
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recurring_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL CHECK(tipo IN ('Receita', 'Despesa')),
+            categoria TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            valor REAL NOT NULL,
+            dia_vencimento INTEGER NOT NULL CHECK(dia_vencimento >= 1 AND dia_vencimento <= 31),
+            forma_pagamento TEXT NOT NULL DEFAULT 'Pix',
+            patient_id INTEGER,
+            observacoes TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1,
+            ultima_geracao_mes TEXT,
+            criado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE SET NULL
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rec_ativo ON recurring_transactions(ativo);")
+
     # Migrações suaves para tabelas existentes
     try:
         cursor.execute("ALTER TABLE patients ADD COLUMN data_ultimo_atendimento_manual TEXT;")
@@ -392,6 +415,28 @@ def init_db():
         cursor.execute("ALTER TABLE patients ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1;")
     except sqlite3.OperationalError:
         pass  # Já existe
+
+    # Migração: Nota Fiscal emitida em lançamentos financeiros
+    try:
+        cursor.execute("ALTER TABLE financial_transactions ADD COLUMN nota_fiscal_emitida INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass  # Já existe
+
+    try:
+        cursor.execute("ALTER TABLE financial_transactions ADD COLUMN numero_nota_fiscal TEXT;")
+    except sqlite3.OperationalError:
+        pass  # Já existe
+
+    # Migração: Recorrência de lançamentos
+    try:
+        cursor.execute("ALTER TABLE financial_transactions ADD COLUMN recorrente INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE financial_transactions ADD COLUMN recorrente_template_id INTEGER;")
+    except sqlite3.OperationalError:
+        pass
 
     # Migração / Padronização de nomenclatura: 'Sublocação de Consultório (Sala 2)' -> 'Sublocação'
     try:

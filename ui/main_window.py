@@ -16,6 +16,7 @@ from ui.financial_view import FinancialView
 from ui.reports_view import ReportsView
 from ui.backup_dialog import BackupDialog
 from ui.updater_dialog import UpdaterDialog
+from services.financial_service import gerar_transacoes_recorrentes_pendentes, verificar_alertas_vencimento
 from version import __version__, APP_NAME
 
 LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo_clean.png"
@@ -64,6 +65,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 650)
         self.ajustar_tamanho_inicial()
         self.init_ui()
+        # Gera lançamentos recorrentes e verifica contas a vencer após 800ms
+        QTimer.singleShot(800, self.checar_vencimentos_ao_iniciar)
         # Checa atualizações silenciosamente em 2º plano após 3 segundos
         QTimer.singleShot(3000, self.checar_atualizacoes_silencioso)
 
@@ -131,9 +134,30 @@ class MainWindow(QMainWindow):
 
         header_layout.addStretch()
 
-        # Informações do Usuário Logado
+        # Informações do Usuário Logado e Alertas
         user_info_layout = QHBoxLayout()
-        user_info_layout.setSpacing(8)
+        user_info_layout.setSpacing(10)
+
+        # Botão de Central de Vencimentos
+        self.btn_vencimentos = QPushButton("🔔 Vencimentos", header)
+        self.btn_vencimentos.setCursor(Qt.PointingHandCursor)
+        self.btn_vencimentos.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.15);
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 6px 14px;
+                border-radius: 6px;
+                border: 1px solid rgba(255, 255, 255, 0.35);
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.25);
+            }
+        """)
+        self.btn_vencimentos.clicked.connect(self.abrir_central_vencimentos)
+        user_info_layout.addWidget(self.btn_vencimentos)
+        user_info_layout.addSpacing(6)
 
         lbl_user = QLabel(f"Olá, {self.current_user['nome']}", header)
         lbl_user.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: 500;")
@@ -352,6 +376,64 @@ class MainWindow(QMainWindow):
     def abrir_updater_dialog(self):
         dlg = UpdaterDialog(silensioso=False, parent=self)
         dlg.exec()
+
+    def checar_vencimentos_ao_iniciar(self):
+        try:
+            gerar_transacoes_recorrentes_pendentes()
+            self.atualizar_contador_vencimentos(abrir_modal_se_houver=True)
+        except Exception as e:
+            print("Erro ao verificar vencimentos na inicialização:", e)
+
+    def atualizar_contador_vencimentos(self, abrir_modal_se_houver: bool = False):
+        try:
+            bills = verificar_alertas_vencimento(dias_antecedencia=1)
+            qtd = len(bills)
+            if qtd > 0:
+                self.btn_vencimentos.setText(f"🔔 Vencimentos ({qtd})")
+                self.btn_vencimentos.setStyleSheet("""
+                    QPushButton {
+                        background-color: #ea580c;
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: bold;
+                        padding: 6px 14px;
+                        border-radius: 6px;
+                        border: 1px solid #ffedd5;
+                    }
+                    QPushButton:hover {
+                        background-color: #c2410c;
+                    }
+                """)
+                if abrir_modal_se_houver:
+                    self.abrir_central_vencimentos()
+            else:
+                self.btn_vencimentos.setText("🔔 Vencimentos")
+                self.btn_vencimentos.setStyleSheet("""
+                    QPushButton {
+                        background-color: rgba(255, 255, 255, 0.15);
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: bold;
+                        padding: 6px 14px;
+                        border-radius: 6px;
+                        border: 1px solid rgba(255, 255, 255, 0.35);
+                    }
+                    QPushButton:hover {
+                        background-color: rgba(255, 255, 255, 0.25);
+                    }
+                """)
+        except Exception as e:
+            print("Erro ao atualizar contador de vencimentos:", e)
+
+    def abrir_central_vencimentos(self):
+        from ui.due_bills_dialog import DueBillsDialog
+        bills = verificar_alertas_vencimento(dias_antecedencia=1)
+        dialog = DueBillsDialog(self.current_user, bills, parent=self)
+        dialog.exec()
+        if dialog.abrir_financeiro_solicitado:
+            # 3 é o índice do Financeiro
+            self.navegar_para(3)
+        self.atualizar_contador_vencimentos(abrir_modal_se_houver=False)
 
     def executar_logout(self):
         log_action(self.current_user["id"], self.current_user["nome"], "LOGOUT", "Sessão finalizada pelo usuário")

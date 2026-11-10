@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QDialog, QTextEdit, QComboBox, QDateEdit,
     QFrame, QDoubleSpinBox, QSizePolicy, QScrollArea, QFileDialog,
-    QInputDialog, QListView
+    QInputDialog, QListView, QCheckBox, QSpinBox
 )
 from PySide6.QtCore import Qt, QTimer, QDate
 from PySide6.QtGui import QFont, QColor, QDesktopServices
@@ -17,6 +17,7 @@ from PySide6.QtCore import QUrl
 
 from ui.patients_view import perguntar_sim_nao
 from ui.custom_date_edit import CustomDateEdit
+from version import get_asset_path
 from services.patient_service import search_patients
 from services.financial_service import (
     FORMAS_PAGAMENTO,
@@ -28,6 +29,7 @@ from services.financial_service import (
 )
 
 UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads" / "financial"
+CHECK_ICON_PATH = get_asset_path("check_white.png").as_posix()
 
 FINANCIAL_STYLE = """
 QWidget {
@@ -299,6 +301,29 @@ QTableCornerButton::section {
     background-color: #f8fafc;
     border: none;
 }
+QCheckBox {
+    font-size: 13px;
+    color: #0f766e;
+    font-weight: 600;
+    spacing: 8px;
+    background: transparent;
+}
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #0f766e;
+    border-radius: 4px;
+    background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+    border-color: #0d9488;
+    background-color: #f0fdfa;
+}
+QCheckBox::indicator:checked {
+    background-color: #0f766e;
+    border: 2px solid #0f766e;
+    image: url(""" + CHECK_ICON_PATH + """);
+}
 """
 
 
@@ -318,118 +343,68 @@ class TransactionFormDialog(QDialog):
 
         titulo = f"Editar Lançamento #{transaction['id']}" if self.is_edit else f"Novo Lançamento ({tipo})"
         self.setWindowTitle(titulo)
-        self.setFixedSize(620, 620)
+        self.setFixedSize(700, 625)
         self.setStyleSheet(FINANCIAL_STYLE)
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(11)
 
         # Cabeçalho com seletor de Tipo (Receita / Despesa)
         top_box = QHBoxLayout()
         title = QLabel("Editar Lançamento" if self.is_edit else "Registrar Lançamento Financeiro")
-        title.setStyleSheet("font-size: 17px; font-weight: bold; color: #166260;")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #0f766e;")
         top_box.addWidget(title)
         top_box.addStretch()
 
         self.cmb_tipo = QComboBox()
         self.cmb_tipo.setView(QListView())
         self.cmb_tipo.addItems(["Receita", "Despesa"])
-        self.cmb_tipo.setFixedWidth(140)
-        self.cmb_tipo.setStyleSheet("padding: 6px 28px 6px 12px; font-weight: bold; font-size: 13px;")
+        self.cmb_tipo.setFixedWidth(130)
+        self.cmb_tipo.setStyleSheet("font-weight: bold; font-size: 13px;")
         self.cmb_tipo.setCurrentText(self.transaction["tipo"] if self.is_edit else self.tipo_inicial)
         self.cmb_tipo.currentIndexChanged.connect(self.ao_mudar_tipo)
         top_box.addWidget(self.cmb_tipo)
         layout.addLayout(top_box)
 
-        # 1. Descrição do Lançamento
-        layout.addWidget(QLabel("Descrição do Lançamento (*):"))
-        self.txt_desc = QLineEdit()
-        self.txt_desc.setPlaceholderText("Ex: Consulta Dra. Lara, Procedimento Restauração, Compra Resinas...")
-        layout.addWidget(self.txt_desc)
+        # Linha 1: Descrição (flex 6) e Categoria Financeira (flex 4)
+        row1 = QHBoxLayout()
+        row1.setSpacing(12)
 
-        # 2. Categoria e Valor
-        row_cat_val = QHBoxLayout()
+        v_desc = QVBoxLayout()
+        v_desc.setSpacing(4)
+        lbl_desc = QLabel("Descrição do Lançamento (*):")
+        lbl_desc.setStyleSheet("font-weight: 600; color: #334155;")
+        v_desc.addWidget(lbl_desc)
+        self.txt_desc = QLineEdit()
+        self.txt_desc.setPlaceholderText("Ex: Consulta Dra. Lara, Restauração Resina, Compra Luvas...")
+        v_desc.addWidget(self.txt_desc)
+        row1.addLayout(v_desc, 6)
+
         v_cat = QVBoxLayout()
-        v_cat.addWidget(QLabel("Categoria Financeira (*):"))
+        v_cat.setSpacing(4)
+        lbl_cat = QLabel("Categoria Financeira (*):")
+        lbl_cat.setStyleSheet("font-weight: 600; color: #334155;")
+        v_cat.addWidget(lbl_cat)
         self.cmb_cat = QComboBox()
         self.cmb_cat.setView(QListView())
         self.carregar_categorias()
         v_cat.addWidget(self.cmb_cat)
-        row_cat_val.addLayout(v_cat)
+        row1.addLayout(v_cat, 4)
 
-        v_val = QVBoxLayout()
-        v_val.addWidget(QLabel("Valor Total (R$) (*):"))
-        self.spn_valor = QDoubleSpinBox()
-        self.spn_valor.setRange(0.01, 999999.99)
-        self.spn_valor.setDecimals(2)
-        self.spn_valor.setPrefix("R$ ")
-        self.spn_valor.setValue(100.0)
-        v_val.addWidget(self.spn_valor)
-        row_cat_val.addLayout(v_val)
-        layout.addLayout(row_cat_val)
+        layout.addLayout(row1)
 
-        # 3. Forma de Pagamento e Status
-        row_forma = QHBoxLayout()
-        v_f = QVBoxLayout()
-        v_f.addWidget(QLabel("Forma de Pagamento:"))
-        self.cmb_forma = QComboBox()
-        self.cmb_forma.setView(QListView())
-        self.cmb_forma.addItems(FORMAS_PAGAMENTO)
-        v_f.addWidget(self.cmb_forma)
-        row_forma.addLayout(v_f)
+        # Linha 2: Paciente Vinculado (flex 6) e Valor Total (flex 4)
+        row2 = QHBoxLayout()
+        row2.setSpacing(12)
 
-        v_st = QVBoxLayout()
-        v_st.addWidget(QLabel("Status do Lançamento:"))
-        self.cmb_status = QComboBox()
-        self.cmb_status.setView(QListView())
-        self.cmb_status.addItems(["Pago", "Pendente"])
-        self.cmb_status.currentIndexChanged.connect(self.ao_mudar_status)
-        v_st.addWidget(self.cmb_status)
-        row_forma.addLayout(v_st)
-
-        v_parc = QVBoxLayout()
-        v_parc.addWidget(QLabel("Parcelas:"))
-        self.cmb_parcelas = QComboBox()
-        self.cmb_parcelas.setView(QListView())
-        for i in range(1, 13):
-            self.cmb_parcelas.addItem(f"{i}x")
-        v_parc.addWidget(self.cmb_parcelas)
-        row_forma.addLayout(v_parc)
-
-        layout.addLayout(row_forma)
-
-        # 4. Datas: Atendimento / Compra, Vencimento, Pagamento
-        row_dates = QHBoxLayout()
-        v_comp = QVBoxLayout()
-        self.lbl_comp = QLabel("Data do Atendimento / Procedimento (*):")
-        v_comp.addWidget(self.lbl_comp)
-        self.dt_comp = CustomDateEdit()
-        self.dt_comp.setDate(QDate.currentDate())
-        self.dt_comp.setToolTip("Data em que o atendimento clínico ou procedimento odontológico foi realizado")
-        v_comp.addWidget(self.dt_comp)
-        row_dates.addLayout(v_comp)
-
-        v_venc = QVBoxLayout()
-        v_venc.addWidget(QLabel("Data de Vencimento:"))
-        self.dt_venc = CustomDateEdit()
-        self.dt_venc.setDate(QDate.currentDate())
-        v_venc.addWidget(self.dt_venc)
-        row_dates.addLayout(v_venc)
-
-        v_pag = QVBoxLayout()
-        v_pag.addWidget(QLabel("Data do Pagamento:"))
-        self.dt_pag = CustomDateEdit()
-        self.dt_pag.setDate(QDate.currentDate())
-        v_pag.addWidget(self.dt_pag)
-        row_dates.addLayout(v_pag)
-
-        layout.addLayout(row_dates)
-
-        # 5. Vínculo com Paciente (Opcional)
-        layout.addWidget(QLabel("Vincular Paciente (Opcional - digite para pesquisar):"))
+        v_pac = QVBoxLayout()
+        v_pac.setSpacing(4)
+        lbl_pac = QLabel("Paciente Vinculado (Opcional):")
+        lbl_pac.setStyleSheet("font-weight: 600; color: #334155;")
+        v_pac.addWidget(lbl_pac)
         self.cmb_paciente = QComboBox()
         self.cmb_paciente.setView(QListView())
         self.cmb_paciente.setEditable(True)
@@ -439,55 +414,218 @@ class TransactionFormDialog(QDialog):
         if completer:
             completer.setFilterMode(Qt.MatchContains)
             completer.setCaseSensitivity(Qt.CaseInsensitive)
-        layout.addWidget(self.cmb_paciente)
+        v_pac.addWidget(self.cmb_paciente)
+        row2.addLayout(v_pac, 6)
 
-        # 6. Anexo de Comprovante / Nota Fiscal
-        layout.addWidget(QLabel("Comprovante / Recibo / Nota Fiscal (PDF ou Imagem):"))
-        anexo_box = QHBoxLayout()
+        v_val = QVBoxLayout()
+        v_val.setSpacing(4)
+        lbl_val = QLabel("Valor Total (R$) (*):")
+        lbl_val.setStyleSheet("font-weight: 600; color: #334155;")
+        v_val.addWidget(lbl_val)
+        self.spn_valor = QDoubleSpinBox()
+        self.spn_valor.setRange(0.01, 999999.99)
+        self.spn_valor.setDecimals(2)
+        self.spn_valor.setPrefix("R$ ")
+        self.spn_valor.setValue(100.0)
+        v_val.addWidget(self.spn_valor)
+        row2.addLayout(v_val, 4)
+
+        layout.addLayout(row2)
+
+        # Linha 3: Forma de Pagamento (4), Parcelas (2), Status (4)
+        row3 = QHBoxLayout()
+        row3.setSpacing(12)
+
+        v_f = QVBoxLayout()
+        v_f.setSpacing(4)
+        lbl_forma = QLabel("Forma de Pagamento:")
+        lbl_forma.setStyleSheet("font-weight: 600; color: #334155;")
+        v_f.addWidget(lbl_forma)
+        self.cmb_forma = QComboBox()
+        self.cmb_forma.setView(QListView())
+        self.cmb_forma.addItems(FORMAS_PAGAMENTO)
+        v_f.addWidget(self.cmb_forma)
+        row3.addLayout(v_f, 4)
+
+        v_parc = QVBoxLayout()
+        v_parc.setSpacing(4)
+        lbl_parc = QLabel("Parcelas:")
+        lbl_parc.setStyleSheet("font-weight: 600; color: #334155;")
+        v_parc.addWidget(lbl_parc)
+        self.cmb_parcelas = QComboBox()
+        self.cmb_parcelas.setView(QListView())
+        for i in range(1, 13):
+            self.cmb_parcelas.addItem(f"{i}x")
+        v_parc.addWidget(self.cmb_parcelas)
+        row3.addLayout(v_parc, 2)
+
+        v_st = QVBoxLayout()
+        v_st.setSpacing(4)
+        lbl_st = QLabel("Status do Lançamento:")
+        lbl_st.setStyleSheet("font-weight: 600; color: #334155;")
+        v_st.addWidget(lbl_st)
+        self.cmb_status = QComboBox()
+        self.cmb_status.setView(QListView())
+        self.cmb_status.addItems(["Pago", "Pendente"])
+        self.cmb_status.currentIndexChanged.connect(self.ao_mudar_status)
+        v_st.addWidget(self.cmb_status)
+        row3.addLayout(v_st, 4)
+
+        layout.addLayout(row3)
+
+        # Linha 4: Datas (Atendimento / Procedimento, Vencimento, Pagamento)
+        row4 = QHBoxLayout()
+        row4.setSpacing(12)
+
+        v_comp = QVBoxLayout()
+        v_comp.setSpacing(4)
+        self.lbl_comp = QLabel("Data do Atendimento (*):")
+        self.lbl_comp.setStyleSheet("font-weight: 600; color: #334155;")
+        v_comp.addWidget(self.lbl_comp)
+        self.dt_comp = CustomDateEdit()
+        self.dt_comp.setDate(QDate.currentDate())
+        self.dt_comp.setToolTip("Data em que o atendimento clínico ou procedimento odontológico foi realizado")
+        v_comp.addWidget(self.dt_comp)
+        row4.addLayout(v_comp, 1)
+
+        v_venc = QVBoxLayout()
+        v_venc.setSpacing(4)
+        lbl_venc = QLabel("Data de Vencimento:")
+        lbl_venc.setStyleSheet("font-weight: 600; color: #334155;")
+        v_venc.addWidget(lbl_venc)
+        self.dt_venc = CustomDateEdit()
+        self.dt_venc.setDate(QDate.currentDate())
+        v_venc.addWidget(self.dt_venc)
+        row4.addLayout(v_venc, 1)
+
+        v_pag = QVBoxLayout()
+        v_pag.setSpacing(4)
+        lbl_pag = QLabel("Data do Pagamento:")
+        lbl_pag.setStyleSheet("font-weight: 600; color: #334155;")
+        v_pag.addWidget(lbl_pag)
+        self.dt_pag = CustomDateEdit()
+        self.dt_pag.setDate(QDate.currentDate())
+        v_pag.addWidget(self.dt_pag)
+        row4.addLayout(v_pag, 1)
+
+        layout.addLayout(row4)
+
+        # Linha 5: Painel de Recorrência Mensal
+        rec_frame = QFrame()
+        rec_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+            }
+        """)
+        row_rec = QHBoxLayout(rec_frame)
+        row_rec.setContentsMargins(12, 6, 12, 6)
+        row_rec.setSpacing(10)
+
+        self.chk_recorrente = QCheckBox("Lançamento Recorrente Mensal")
+        self.chk_recorrente.setCursor(Qt.PointingHandCursor)
+        self.chk_recorrente.stateChanged.connect(self.ao_alternar_recorrente)
+        row_rec.addWidget(self.chk_recorrente)
+
+        self.lbl_dia_venc = QLabel("Dia do Vencimento Mensal:")
+        self.lbl_dia_venc.setStyleSheet("font-size: 12px; color: #475569; font-weight: 600; border: none; background: transparent;")
+        row_rec.addWidget(self.lbl_dia_venc)
+
+        self.spn_dia_venc = QSpinBox()
+        self.spn_dia_venc.setRange(1, 31)
+        self.spn_dia_venc.setValue(10)
+        self.spn_dia_venc.setFixedWidth(65)
+        self.spn_dia_venc.setToolTip("Dia fixo do mês em que este lançamento deve vencer e gerar alerta prévio")
+        row_rec.addWidget(self.spn_dia_venc)
+
+        row_rec.addStretch()
+        layout.addWidget(rec_frame)
+
+        # Linha 6: Painel Documental (Nota Fiscal e Comprovante de Anexo)
+        doc_frame = QFrame()
+        doc_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+            }
+        """)
+        row_doc = QHBoxLayout(doc_frame)
+        row_doc.setContentsMargins(12, 6, 12, 6)
+        row_doc.setSpacing(10)
+
+        self.chk_nota_fiscal = QCheckBox("Nota Fiscal (NF-e)")
+        self.chk_nota_fiscal.setFixedWidth(165)
+        self.chk_nota_fiscal.setCursor(Qt.PointingHandCursor)
+        row_doc.addWidget(self.chk_nota_fiscal)
+
+        self.txt_num_nf = QLineEdit()
+        self.txt_num_nf.setPlaceholderText("Nº NF-e (opcional)")
+        self.txt_num_nf.setFixedWidth(130)
+        row_doc.addWidget(self.txt_num_nf)
+
+        row_doc.addSpacing(10)
+
         self.lbl_anexo_status = QLabel("Nenhum arquivo anexado")
-        self.lbl_anexo_status.setStyleSheet("color: #64748b; font-size: 12px;")
-        anexo_box.addWidget(self.lbl_anexo_status)
-        anexo_box.addStretch()
+        self.lbl_anexo_status.setStyleSheet("color: #64748b; font-size: 12px; border: none; background: transparent;")
+        self.lbl_anexo_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        row_doc.addWidget(self.lbl_anexo_status)
 
         btn_anexar = QPushButton("📎 Anexar Arquivo")
         btn_anexar.setObjectName("secondaryBtn")
+        btn_anexar.setStyleSheet("padding: 5px 12px; font-size: 12px;")
+        btn_anexar.setFixedWidth(130)
         btn_anexar.clicked.connect(self.selecionar_anexo)
-        anexo_box.addWidget(btn_anexar)
-        layout.addLayout(anexo_box)
+        row_doc.addWidget(btn_anexar)
 
-        # 7. Observações
-        layout.addWidget(QLabel("Observações Adicionais:"))
+        layout.addWidget(doc_frame)
+
+        # Linha 6: Observações
+        v_obs = QVBoxLayout()
+        v_obs.setSpacing(4)
+        lbl_obs = QLabel("Observações Adicionais:")
+        lbl_obs.setStyleSheet("font-weight: 600; color: #334155;")
+        v_obs.addWidget(lbl_obs)
         self.txt_obs = QLineEdit()
         self.txt_obs.setPlaceholderText("Informações sobre banco, conta, código de autorização...")
-        layout.addWidget(self.txt_obs)
+        v_obs.addWidget(self.txt_obs)
+        layout.addLayout(v_obs)
 
         layout.addStretch()
 
         # Botões de Ação
         btn_box = QHBoxLayout()
+        btn_box.setSpacing(12)
         btn_box.addStretch()
 
         btn_cancel = QPushButton("Cancelar")
         btn_cancel.setObjectName("secondaryBtn")
+        btn_cancel.setFixedWidth(110)
         btn_cancel.clicked.connect(self.reject)
         btn_box.addWidget(btn_cancel)
 
         btn_save = QPushButton("Salvar Lançamento")
         btn_save.setObjectName("primaryBtn")
+        btn_save.setFixedWidth(160)
         btn_save.clicked.connect(self.salvar)
         btn_box.addWidget(btn_save)
 
         layout.addLayout(btn_box)
 
-        # Se for edição, preenche dados
+        # Configura estado inicial dos seletores
+        self.ao_mudar_tipo()
+        self.ao_mudar_status()
+
+        # Se for edição, preenche dados existentes
         if self.is_edit and self.transaction:
             t = self.transaction
             self.txt_desc.setText(t["descricao"])
+            self.cmb_tipo.blockSignals(True)
             self.cmb_tipo.setCurrentText(t["tipo"])
-            self.carregar_categorias()
-            idx_cat = self.cmb_cat.findText(t["categoria"])
-            if idx_cat >= 0:
-                self.cmb_cat.setCurrentIndex(idx_cat)
+            self.cmb_tipo.blockSignals(False)
+
+            self.carregar_categorias(selecionar=t.get("categoria"))
 
             self.spn_valor.setValue(float(t["valor"]))
             self.cmb_status.setCurrentText(t.get("status", "Pago"))
@@ -523,6 +661,19 @@ class TransactionFormDialog(QDialog):
                         self.cmb_paciente.setCurrentIndex(idx)
                         break
 
+            # Recorrência
+            rec = bool(t.get("recorrente", 0))
+            self.chk_recorrente.setChecked(rec)
+            if t.get("data_vencimento"):
+                try:
+                    self.spn_dia_venc.setValue(int(str(t["data_vencimento"])[8:10]))
+                except Exception:
+                    pass
+
+            # Nota Fiscal
+            self.chk_nota_fiscal.setChecked(bool(t.get("nota_fiscal_emitida", 0)))
+            self.txt_num_nf.setText(t.get("numero_nota_fiscal") or "")
+
             # Anexo
             comp = t.get("comprovante_path")
             if comp:
@@ -531,14 +682,19 @@ class TransactionFormDialog(QDialog):
 
             self.txt_obs.setText(t.get("observacoes") or "")
 
-        self.ao_mudar_tipo()
-        self.ao_mudar_status()
+        self.ao_alternar_recorrente()
+
+    def ao_alternar_recorrente(self):
+        ativo = self.chk_recorrente.isChecked()
+        self.lbl_dia_venc.setVisible(ativo)
+        self.spn_dia_venc.setVisible(ativo)
 
     def ao_mudar_tipo(self):
-        self.carregar_categorias()
+        cat_atual = self.cmb_cat.currentText() if self.cmb_cat.count() > 0 else None
+        self.carregar_categorias(selecionar=cat_atual)
         eh_rec = (self.cmb_tipo.currentText() == "Receita")
         if eh_rec:
-            self.lbl_comp.setText("Data do Atendimento / Procedimento (*):")
+            self.lbl_comp.setText("Data do Atendimento (*):")
             self.dt_comp.setToolTip("Data em que o atendimento clínico ou procedimento odontológico foi realizado")
         else:
             self.lbl_comp.setText("Data da Compra / Despesa (*):")
@@ -548,11 +704,20 @@ class TransactionFormDialog(QDialog):
         eh_pago = (self.cmb_status.currentText() == "Pago")
         self.dt_pag.setEnabled(eh_pago)
 
-    def carregar_categorias(self):
+    def carregar_categorias(self, selecionar: Optional[str] = None):
         tipo = self.cmb_tipo.currentText()
         cats = list_financial_categories(tipo)
+        self.cmb_cat.blockSignals(True)
         self.cmb_cat.clear()
         self.cmb_cat.addItems(cats)
+        if selecionar:
+            idx = self.cmb_cat.findText(selecionar)
+            if idx >= 0:
+                self.cmb_cat.setCurrentIndex(idx)
+            else:
+                self.cmb_cat.addItem(selecionar)
+                self.cmb_cat.setCurrentText(selecionar)
+        self.cmb_cat.blockSignals(False)
 
     def carregar_pacientes(self):
         self.cmb_paciente.clear()
@@ -613,18 +778,24 @@ class TransactionFormDialog(QDialog):
             else:
                 patient_id = self.cmb_paciente.currentData()
         obs = self.txt_obs.text().strip()
+        nf_emitida = 1 if self.chk_nota_fiscal.isChecked() else 0
+        num_nf = self.txt_num_nf.text().strip() or None
+        recorrente = 1 if self.chk_recorrente.isChecked() else 0
+        dia_venc_rec = self.spn_dia_venc.value() if recorrente else None
 
         if self.is_edit and self.transaction:
             ok, msg = update_transaction(
                 self.transaction["id"], tipo, cat, desc, valor, str_comp,
                 str_venc, str_pag, status, forma, parcelas, patient_id,
-                self.anexo_caminho, obs, self.current_user["id"], self.current_user["nome"]
+                self.anexo_caminho, nf_emitida, num_nf, obs,
+                self.current_user["id"], self.current_user["nome"]
             )
         else:
             ok, msg, _ = create_transaction(
                 tipo, cat, desc, valor, str_comp, str_venc, str_pag,
                 status, forma, parcelas, patient_id, None, self.anexo_caminho,
-                obs, self.current_user["id"], self.current_user["nome"]
+                nf_emitida, num_nf, recorrente, dia_venc_rec, obs,
+                self.current_user["id"], self.current_user["nome"]
             )
 
         if ok:
@@ -645,7 +816,7 @@ class MarkAsPaidDialog(QDialog):
         self.transaction = transaction
         self.current_user = current_user
         self.setWindowTitle(f"Confirmar Baixa: {transaction['descricao']}")
-        self.setFixedSize(440, 290)
+        self.setFixedSize(460, 340)
         self.setStyleSheet(FINANCIAL_STYLE)
         self.init_ui()
 
@@ -689,6 +860,22 @@ class MarkAsPaidDialog(QDialog):
         row_f.addLayout(v_d)
 
         layout.addLayout(row_f)
+
+        # Opção Nota Fiscal na Baixa
+        row_nf = QHBoxLayout()
+        self.chk_nf = QCheckBox("Nota Fiscal (NF-e)")
+        self.chk_nf.setCursor(Qt.PointingHandCursor)
+        self.chk_nf.setChecked(bool(self.transaction.get("nota_fiscal_emitida", 0)))
+        row_nf.addWidget(self.chk_nf)
+
+        self.txt_num_nf = QLineEdit()
+        self.txt_num_nf.setPlaceholderText("Nº NF-e (opcional)")
+        self.txt_num_nf.setText(self.transaction.get("numero_nota_fiscal") or "")
+        self.txt_num_nf.setMaximumWidth(160)
+        row_nf.addWidget(self.txt_num_nf)
+        row_nf.addStretch()
+        layout.addLayout(row_nf)
+
         layout.addStretch()
 
         btn_box = QHBoxLayout()
@@ -710,9 +897,12 @@ class MarkAsPaidDialog(QDialog):
         forma = self.cmb_forma.currentText()
         d_pag = self.dt_pag.date()
         str_pag = f"{d_pag.year():04d}-{d_pag.month():02d}-{d_pag.day():02d}"
+        nf_emitida = 1 if self.chk_nf.isChecked() else 0
+        num_nf = self.txt_num_nf.text().strip() or None
 
         ok, msg = marcar_como_pago(
             self.transaction["id"], str_pag, forma,
+            nf_emitida, num_nf,
             self.current_user["id"], self.current_user["nome"]
         )
         if ok:
@@ -1309,7 +1499,7 @@ class FinancialView(QWidget):
         self.table.setColumnWidth(4, 140)
         self.table.setColumnWidth(5, 115)
         self.table.setColumnWidth(6, 120)
-        self.table.setColumnWidth(7, 95)
+        self.table.setColumnWidth(7, 120)
 
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -1595,12 +1785,24 @@ class FinancialView(QWidget):
             item_forma.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row_idx, 6, item_forma)
 
-            # Coluna 7: Status
+            # Coluna 7: Status (diferencia se tem Nota Fiscal emitida)
             st = t.get("status", "Pago")
-            item_st = QTableWidgetItem("✓ Pago" if st == "Pago" else "⏳ Pendente")
+            if st == "Pago":
+                has_nf = bool(t.get("nota_fiscal_emitida"))
+                texto_st = "✓ Pago / NF" if has_nf else "✓ Pago"
+                cor_st = "#0284c7" if has_nf else "#059669"
+            else:
+                texto_st = "⏳ Pendente"
+                cor_st = "#d97706"
+
+            item_st = QTableWidgetItem(texto_st)
             item_st.setTextAlignment(Qt.AlignCenter)
             item_st.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            item_st.setForeground(QColor("#059669" if st == "Pago" else "#d97706"))
+            item_st.setForeground(QColor(cor_st))
+            if t.get("numero_nota_fiscal"):
+                item_st.setToolTip(f"Nota Fiscal: {t.get('numero_nota_fiscal')}")
+            elif t.get("nota_fiscal_emitida"):
+                item_st.setToolTip("Nota Fiscal emitida (NF-e)")
             self.table.setItem(row_idx, 7, item_st)
 
             self.table.item(row_idx, 0).setData(Qt.UserRole, t)

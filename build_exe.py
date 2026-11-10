@@ -90,9 +90,29 @@ def compilar():
         except Exception:
             pass
 
+        # Gera pacote ZIP para GitHub Releases e Instalador Web (sem dados sensíveis)
+        zip_path = dist_dir / "LCR-OdontoGest.zip"
+        print(f"\n[EMPACOTAMENTO] Gerando pacote ZIP para GitHub Releases em:\n{zip_path}")
+        import zipfile
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(exe_dir):
+                rel_root = os.path.relpath(root, exe_dir)
+                if rel_root == "data" or rel_root.startswith("data" + os.sep) or rel_root == "uploads" or rel_root.startswith("uploads" + os.sep):
+                    continue
+                for file in files:
+                    if file.endswith((".db", ".db-journal", ".db-wal")):
+                        continue
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, exe_dir)
+                    zipf.write(file_path, arcname)
+
+        size_mb = zip_path.stat().st_size / (1024 * 1024)
+        print(f"[SUCESSO] Pacote ZIP gerado com sucesso ({size_mb:.2f} MB)!")
+
         print("\n" + "=" * 60)
         print("[SUCESSO] COMPILACAO CONCLUIDA COM SUCESSO!")
-        print(f"Executavel gerado em:\n{exe_path}")
+        print(f"Executavel: {exe_path}")
+        print(f"Pacote Web: {zip_path}")
         print("=" * 60)
     else:
         print("\n" + "=" * 60)
