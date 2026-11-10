@@ -1,0 +1,9 @@
+{
+  "version": "1.1.0",
+  "app_name": "LCR OdontoGest",
+  "release_date": "2026-11-10",
+  "installer_name": "Instalador-LCR-OdontoGest.exe",
+  "installer_sha256": "D82CFBC06A25397110F1D1DD5E782BAAAB926605391A48371351A321DFD92A60",
+  "download_url": "https://github.com/vmsoaresadv/lcr-odontogest/releases/download/v1.1.0/Instalador-LCR-OdontoGest.exe",
+  "changelog": "Versão oficial 1.1.0 de produção para a clínica com instalador seguro autocontido."
+}
