@@ -52,6 +52,22 @@ def format_data_br(dt_str: str) -> str:
     return dt_str
 
 
+def format_datetime_br(dt_str: str) -> str:
+    """Formata data e hora no padrão brasileiro DD/MM/AAAA às HH:MM."""
+    if not dt_str:
+        return ""
+    try:
+        s = dt_str.strip()
+        if " " in s:
+            partes = s.split(" ", 1)
+            d_part = format_data_br(partes[0])
+            h_part = partes[1][:5]
+            return f"{d_part} às {h_part}"
+        return format_data_br(s)
+    except Exception:
+        return dt_str
+
+
 # -------------------------------------------------------------
 # GESTÃO DE PACIENTES
 # -------------------------------------------------------------
@@ -903,3 +919,182 @@ def reset_odontograma(patient_id: int, user_id: int, user_nome: str) -> Tuple[bo
         return False, f"Erro ao resetar: {e}"
     finally:
         conn.close()
+
+
+def get_patient_timeline_events(patient_id: int) -> List[dict]:
+    """
+    Reúne e unifica todas as informações da vida clínica e financeira do paciente
+    em um feed cronológico 360° (Consultas, Procedimentos, Anexos, Orçamentos, Financeiro e Receitas).
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    eventos = []
+
+    # 1. Consultas e Agendamentos (appointments)
+    cursor.execute("""
+        SELECT id, data_consulta, horario, status, procedimento, observacoes
+        FROM appointments
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for a in cursor.fetchall():
+        dt_str = a["data_consulta"]
+        hr_str = a["horario"] or "00:00"
+        ordem = f"{dt_str} {hr_str}"
+        st = a["status"] or "Agendado"
+
+        cor = "#0f766e" if st == "Realizado" else ("#2563eb" if st == "Confirmado" else ("#ef4444" if st == "Cancelado" else "#f59e0b"))
+        icone = "🏥" if st == "Realizado" else "📅"
+
+        d_fmt = format_data_br(dt_str)
+        hora_fmt = f" às {hr_str}" if hr_str and hr_str != "00:00" else ""
+
+        eventos.append({
+            "id": a["id"],
+            "data_ordem": ordem,
+            "data_formatada": f"{d_fmt}{hora_fmt}",
+            "categoria": "clinico",
+            "tipo": "consulta",
+            "titulo": f"Consulta Odontológica ({st})",
+            "icone": icone,
+            "tag": f"Status: {st}",
+            "cor_tag": cor,
+            "descricao": a["procedimento"] or "Consulta / Avaliação Clínica",
+            "detalhes": a["observacoes"] or ""
+        })
+
+    # 2. Prontuários e Procedimentos Clínicos (patient_records)
+    cursor.execute("""
+        SELECT id, data_hora, procedimento, dente_regiao, descricao, profissional_nome
+        FROM patient_records
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for r in cursor.fetchall():
+        ordem = r["data_hora"] or ""
+        dente = f" (Dente {r['dente_regiao']})" if r["dente_regiao"] else ""
+        d_fmt = format_datetime_br(ordem)
+
+        eventos.append({
+            "id": r["id"],
+            "data_ordem": ordem,
+            "data_formatada": d_fmt,
+            "categoria": "clinico",
+            "tipo": "procedimento",
+            "titulo": f"Procedimento Clínico{dente}",
+            "icone": "🦷",
+            "tag": "Evolução Clínica",
+            "cor_tag": "#0f766e",
+            "descricao": r["procedimento"],
+            "detalhes": r["descricao"] or f"Realizado por: {r['profissional_nome'] or 'Dra. Lara Camila'}"
+        })
+
+    # 3. Anexos e Radiografias (patient_attachments)
+    cursor.execute("""
+        SELECT id, nome_arquivo, data_upload, tamanho_bytes
+        FROM patient_attachments
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for at in cursor.fetchall():
+        ordem = at["data_upload"] or ""
+        d_fmt = format_datetime_br(ordem)
+        ext = os.path.splitext(at["nome_arquivo"])[1].lower()
+        icone = "🖼️" if ext in [".png", ".jpg", ".jpeg", ".bmp"] else "📄"
+
+        eventos.append({
+            "id": at["id"],
+            "data_ordem": ordem,
+            "data_formatada": d_fmt,
+            "categoria": "exames",
+            "tipo": "anexo",
+            "titulo": "Exame / Radiografia Anexada",
+            "icone": icone,
+            "tag": "Arquivo / Imagem",
+            "cor_tag": "#6366f1",
+            "descricao": at["nome_arquivo"],
+            "detalhes": f"Tamanho: {(at['tamanho_bytes'] or 0) / 1024:.1f} KB"
+        })
+
+    # 4. Orçamentos e Planos de Tratamento (patient_budgets)
+    cursor.execute("""
+        SELECT id, titulo, valor_final, status, data_criacao, data_aprovacao
+        FROM patient_budgets
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for b in cursor.fetchall():
+        dt_usar = b["data_aprovacao"] or b["data_criacao"]
+        ordem = f"{dt_usar} 12:00"
+        d_fmt = format_data_br(dt_usar)
+        st = b["status"]
+        cor = "#059669" if st == "Aprovado" else ("#f59e0b" if st == "Pendente" else "#64748b")
+
+        eventos.append({
+            "id": b["id"],
+            "data_ordem": ordem,
+            "data_formatada": d_fmt,
+            "categoria": "financeiro",
+            "tipo": "orcamento",
+            "titulo": f"Orçamento #{b['id']} ({st})",
+            "icone": "📝",
+            "tag": f"Plano: {st}",
+            "cor_tag": cor,
+            "descricao": b["titulo"],
+            "detalhes": f"Valor Total: R$ {b['valor_final']:.2f}".replace(".", ",")
+        })
+
+    # 5. Transações Financeiras do Paciente (financial_transactions)
+    cursor.execute("""
+        SELECT id, tipo, categoria, descricao, valor, forma_pagamento,
+               COALESCE(data_pagamento, data_competencia, criado_em) AS data_movimento
+        FROM financial_transactions
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for t in cursor.fetchall():
+        ordem = f"{t['data_movimento']} 12:00"
+        d_fmt = format_data_br(t["data_movimento"])
+        val_fmt = f"R$ {t['valor']:.2f}".replace(".", ",")
+        forma = f" ({t['forma_pagamento']})" if t['forma_pagamento'] else ""
+
+        eventos.append({
+            "id": t["id"],
+            "data_ordem": ordem,
+            "data_formatada": d_fmt,
+            "categoria": "financeiro",
+            "tipo": "pagamento",
+            "titulo": f"Pagamento / {t['tipo']}: {val_fmt}",
+            "icone": "💵",
+            "tag": f"{t['tipo']}{forma}",
+            "cor_tag": "#059669" if t['tipo'] == "Receita" else "#ef4444",
+            "descricao": t["descricao"],
+            "detalhes": f"Categoria: {t['categoria']}"
+        })
+
+    # 6. Receituários e Atestados Emitidos (issued_clinical_documents)
+    cursor.execute("""
+        SELECT id, tipo_documento, titulo, usuario_nome, data_emissao
+        FROM issued_clinical_documents
+        WHERE patient_id = ?
+    """, (patient_id,))
+    for doc in cursor.fetchall():
+        ordem = doc["data_emissao"] or ""
+        d_fmt = format_datetime_br(ordem) if " " in ordem else format_data_br(ordem)
+        tipo = doc["tipo_documento"]
+        icone = "💊" if tipo == "Receituario" else "📋"
+
+        eventos.append({
+            "id": doc["id"],
+            "data_ordem": ordem,
+            "data_formatada": d_fmt,
+            "categoria": "documentos",
+            "tipo": "documento",
+            "titulo": f"{tipo}: {doc['titulo']}",
+            "icone": icone,
+            "tag": "Documento Oficial",
+            "cor_tag": "#0f766e",
+            "descricao": doc["titulo"],
+            "detalhes": f"Emitido por: {doc['usuario_nome'] or 'Dra. Lara Camila'}"
+        })
+
+    conn.close()
+
+    # Ordena da mais recente para a mais antiga
+    eventos.sort(key=lambda x: str(x["data_ordem"]), reverse=True)
+    return eventos

@@ -25,6 +25,7 @@ from ui.anamnese_widget import AnamneseWidget
 from ui.budget_widget import BudgetWidget
 from ui.photo_comparator_dialog import PhotoComparatorDialog
 from ui.clinical_docs_widget import ClinicalDocsWidget
+from ui.timeline_360_widget import Timeline360Widget
 
 def aplicar_mascara_cpf(texto: str) -> str:
     """Aplica máscara progressiva de CPF: 000.000.000-00."""
@@ -650,6 +651,10 @@ class PatientDetailDialog(QDialog):
 
         # Abas da Ficha do Paciente
         self.tabs = QTabWidget(self)
+
+        # Aba 0: Linha do Tempo Visual 360° (Visão Unificada de Atendimento)
+        self.tab_timeline = Timeline360Widget(self.patient_id, self.current_user, self)
+        self.tabs.addTab(self.tab_timeline, "🌐 Linha do Tempo 360°")
 
         # Aba 1: Odontograma Anatômico (FDI)
         self.tab_odontograma = OdontogramaWidget(self.patient_id, self.current_user, self)

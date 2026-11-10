@@ -333,11 +333,12 @@ QCheckBox::indicator:checked {
 
 class TransactionFormDialog(QDialog):
     """Diálogo completo para Inserir ou Editar Lançamento Financeiro."""
-    def __init__(self, current_user: dict, tipo: str = "Receita", transaction: Optional[dict] = None, parent=None):
+    def __init__(self, current_user: dict, tipo: str = "Receita", transaction: Optional[dict] = None, initial_data: Optional[dict] = None, parent=None):
         super().__init__(parent)
         self.current_user = current_user
         self.tipo_inicial = tipo
         self.transaction = transaction
+        self.initial_data = initial_data
         self.is_edit = transaction is not None
         self.anexo_caminho: Optional[str] = None
 
@@ -706,6 +707,21 @@ class TransactionFormDialog(QDialog):
                 self.lbl_anexo_status.setText(f"✓ {Path(comp).name}")
 
             self.txt_obs.setText(t.get("observacoes") or "")
+
+        elif not self.is_edit and self.initial_data:
+            init = self.initial_data
+            if "descricao" in init:
+                self.txt_desc.setText(init["descricao"])
+            if "categoria" in init:
+                self.carregar_categorias(selecionar=init["categoria"])
+            if "valor" in init and init["valor"]:
+                self.spn_valor.setValue(float(init["valor"]))
+            if "patient_id" in init and init["patient_id"]:
+                p_id = init["patient_id"]
+                for idx in range(self.cmb_paciente.count()):
+                    if self.cmb_paciente.itemData(idx) == p_id:
+                        self.cmb_paciente.setCurrentIndex(idx)
+                        break
 
         self.ao_alternar_recorrente()
 

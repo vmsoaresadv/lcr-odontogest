@@ -4,7 +4,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QDialog, QTabWidget, QTextEdit, QComboBox,
-    QDateEdit, QFrame, QScrollArea, QGridLayout, QSizePolicy, QListView
+    QDateEdit, QFrame, QScrollArea, QGridLayout, QSizePolicy, QListView,
+    QCheckBox
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor
@@ -17,7 +18,11 @@ from services.schedule_service import (
     update_appointment_status, delete_appointment,
     get_return_reminders, open_whatsapp,
     build_confirmation_message, build_return_message,
-    get_setting, set_setting, DEFAULT_MSG_CONFIRMACAO, DEFAULT_MSG_RETORNO
+    get_post_operative_patients, get_birthday_patients,
+    build_post_operative_message, build_birthday_message,
+    get_setting, set_setting,
+    DEFAULT_MSG_CONFIRMACAO, DEFAULT_MSG_RETORNO,
+    DEFAULT_MSG_POS_OPERATORIO, DEFAULT_MSG_ANIVERSARIO
 )
 
 SCHEDULE_STYLE = """
@@ -185,44 +190,192 @@ QPushButton#dangerBtn:hover {
 """
 
 
+class AppointmentConclusionDialog(QDialog):
+    """Diálogo de fluxo inteligente (Workflow 360°) acionado ao concluir um atendimento na Agenda."""
+    def __init__(self, appointment_data: dict, current_user: dict, parent=None):
+        super().__init__(parent)
+        self.app = appointment_data
+        self.current_user = current_user
+        self.setWindowTitle("Atendimento Concluído • Workflow 360°")
+        self.resize(540, 390)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8fafc;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QLabel {
+                color: #1e293b;
+            }
+            QPushButton#primaryBtn {
+                background-color: #0f766e;
+                color: #ffffff;
+                font-weight: bold;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton#primaryBtn:hover {
+                background-color: #115e59;
+            }
+            QPushButton#secondaryBtn {
+                background-color: #ffffff;
+                color: #334155;
+                font-weight: 600;
+                border-radius: 6px;
+                border: 1px solid #cbd5e1;
+            }
+            QPushButton#secondaryBtn:hover {
+                background-color: #f1f5f9;
+            }
+        """)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(14)
+
+        # Cabeçalho de Sucesso
+        top_frame = QFrame()
+        top_frame.setStyleSheet("background-color: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 12px;")
+        t_lay = QVBoxLayout(top_frame)
+        t_lay.setSpacing(4)
+        lbl_sucesso = QLabel("✨ Consulta Concluída com Sucesso!")
+        lbl_sucesso.setStyleSheet("font-size: 16px; font-weight: bold; color: #0f766e;")
+        t_lay.addWidget(lbl_sucesso)
+
+        pac_nome = self.app.get("paciente_nome", "Paciente")
+        proc = self.app.get("procedimento", "Procedimento Clínico")
+        lbl_pac = QLabel(f"Paciente: <b>{pac_nome}</b> &nbsp;|&nbsp; Procedimento: <b>{proc}</b>")
+        lbl_pac.setStyleSheet("font-size: 13px; color: #334155;")
+        t_lay.addWidget(lbl_pac)
+        layout.addWidget(top_frame)
+
+        lbl_pergunta = QLabel("Selecione a ação seguinte desejada para este atendimento:")
+        lbl_pergunta.setStyleSheet("font-weight: 600; color: #475569; font-size: 13px;")
+        layout.addWidget(lbl_pergunta)
+
+        # Botões de Ação Rápida
+        btn_fin = QPushButton("💰 Lançar Receita no Financeiro")
+        btn_fin.setObjectName("primaryBtn")
+        btn_fin.setStyleSheet("font-size: 13px; padding: 10px; font-weight: bold;")
+        btn_fin.clicked.connect(self.abrir_financeiro)
+        layout.addWidget(btn_fin)
+
+        btn_rec = QPushButton("💊 Emitir Receita ou Atestado Oficial Timbrado")
+        btn_rec.setObjectName("secondaryBtn")
+        btn_rec.setStyleSheet("font-size: 13px; padding: 10px; font-weight: 600;")
+        btn_rec.clicked.connect(self.abrir_receita)
+        layout.addWidget(btn_rec)
+
+        btn_ficha = QPushButton("🌐 Abrir Ficha do Paciente (Linha do Tempo 360°)")
+        btn_ficha.setObjectName("secondaryBtn")
+        btn_ficha.setStyleSheet("font-size: 13px; padding: 10px; font-weight: 600;")
+        btn_ficha.clicked.connect(self.abrir_ficha)
+        layout.addWidget(btn_ficha)
+
+        layout.addStretch()
+
+        btn_fechar = QPushButton("Apenas Concluir")
+        btn_fechar.setObjectName("secondaryBtn")
+        btn_fechar.clicked.connect(self.accept)
+        layout.addWidget(btn_fechar, alignment=Qt.AlignRight)
+
+    def abrir_financeiro(self):
+        from ui.financial_view import TransactionFormDialog
+        p_id = self.app.get("patient_id")
+        p_nome = self.app.get("paciente_nome", "")
+        proc = self.app.get("procedimento", "Consulta Odontológica")
+        init_data = {
+            "descricao": f"Atendimento: {proc} - {p_nome}",
+            "categoria": "Procedimentos Clínicos / Consultas",
+            "patient_id": p_id,
+            "tipo": "Receita"
+        }
+        self.accept()
+        dlg = TransactionFormDialog(self.current_user, tipo="Receita", initial_data=init_data, parent=self.parent())
+        dlg.exec()
+
+    def abrir_receita(self):
+        from ui.clinical_docs_widget import PrescriptionFormDialog
+        p_id = self.app.get("patient_id")
+        p_nome = self.app.get("paciente_nome", "")
+        p_cpf = self.app.get("paciente_cpf", "")
+        self.accept()
+        dlg = PrescriptionFormDialog(p_id, p_nome, p_cpf, self.current_user, parent=self.parent())
+        dlg.exec()
+
+    def abrir_ficha(self):
+        from ui.patients_view import PatientDetailDialog
+        p_id = self.app.get("patient_id")
+        self.accept()
+        dlg = PatientDetailDialog(p_id, self.current_user, parent=self.parent())
+        dlg.exec()
+
+
 class WhatsAppSettingsDialog(QDialog):
-    """Diálogo para personalizar os modelos de mensagens do WhatsApp."""
+    """Diálogo para personalizar todos os modelos de mensagens do WhatsApp."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Configurar Mensagens do WhatsApp")
-        self.setFixedSize(540, 520)
+        self.setWindowTitle("Configurar Mensagens do WhatsApp • LCR OdontoGest")
+        self.setFixedSize(620, 560)
         self.setStyleSheet(SCHEDULE_STYLE)
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(10)
 
         title = QLabel("Modelos de Mensagens Padrão do WhatsApp")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #166260;")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0f766e;")
         layout.addWidget(title)
 
-        dica = QLabel("Use as tags {paciente}, {data}, {horario} para preenchimento automático:")
-        dica.setStyleSheet("color: #64748b; font-size: 12px;")
+        dica = QLabel("Tags automáticas: {paciente}, {paciente_completo}, {data}, {horario}, {procedimento}, {clinica}, {dentista}")
+        dica.setStyleSheet("color: #64748b; font-size: 11px;")
         layout.addWidget(dica)
 
-        layout.addWidget(QLabel("1. Mensagem de Confirmação de Consulta:"))
+        tabs_msg = QTabWidget()
+
+        # Aba 1: Confirmação
+        tab1 = QWidget()
+        l1 = QVBoxLayout(tab1)
+        l1.addWidget(QLabel("Mensagem de Confirmação de Consulta:"))
         self.txt_confirmacao = QTextEdit()
         self.txt_confirmacao.setPlainText(get_setting("msg_confirmacao", DEFAULT_MSG_CONFIRMACAO))
-        self.txt_confirmacao.setFixedHeight(120)
-        layout.addWidget(self.txt_confirmacao)
+        l1.addWidget(self.txt_confirmacao)
+        tabs_msg.addTab(tab1, "Confirmação")
 
-        layout.addWidget(QLabel("2. Mensagem de Retorno Semestral (6 Meses):"))
+        # Aba 2: Retorno Semestral
+        tab2 = QWidget()
+        l2 = QVBoxLayout(tab2)
+        l2.addWidget(QLabel("Mensagem de Retorno Semestral (6 Meses):"))
         self.txt_retorno = QTextEdit()
         self.txt_retorno.setPlainText(get_setting("msg_retorno", DEFAULT_MSG_RETORNO))
-        self.txt_retorno.setFixedHeight(140)
-        layout.addWidget(self.txt_retorno)
+        l2.addWidget(self.txt_retorno)
+        tabs_msg.addTab(tab2, "Retorno 6 Meses")
 
-        layout.addSpacing(6)
+        # Aba 3: Pós-Operatório
+        tab3 = QWidget()
+        l3 = QVBoxLayout(tab3)
+        l3.addWidget(QLabel("Mensagem de Acompanhamento Pós-Operatório (D+1):"))
+        self.txt_pos_op = QTextEdit()
+        self.txt_pos_op.setPlainText(get_setting("msg_pos_operatorio", DEFAULT_MSG_POS_OPERATORIO))
+        l3.addWidget(self.txt_pos_op)
+        tabs_msg.addTab(tab3, "Pós-Operatório")
+
+        # Aba 4: Aniversário
+        tab4 = QWidget()
+        l4 = QVBoxLayout(tab4)
+        l4.addWidget(QLabel("Mensagem de Felicitações de Aniversário:"))
+        self.txt_aniversario = QTextEdit()
+        self.txt_aniversario.setPlainText(get_setting("msg_aniversario", DEFAULT_MSG_ANIVERSARIO))
+        l4.addWidget(self.txt_aniversario)
+        tabs_msg.addTab(tab4, "Aniversário")
+
+        layout.addWidget(tabs_msg)
 
         btn_box = QHBoxLayout()
-        btn_restaurar = QPushButton("Restaurar Padrão")
+        btn_restaurar = QPushButton("Restaurar Padrões")
         btn_restaurar.setObjectName("secondaryBtn")
         btn_restaurar.clicked.connect(self.restaurar_padrao)
         btn_box.addWidget(btn_restaurar)
@@ -233,7 +386,7 @@ class WhatsAppSettingsDialog(QDialog):
         btn_cancelar.clicked.connect(self.reject)
         btn_box.addWidget(btn_cancelar)
 
-        btn_salvar = QPushButton("Salvar Mensagens")
+        btn_salvar = QPushButton("Salvar Todas as Mensagens")
         btn_salvar.setObjectName("primaryBtn")
         btn_salvar.clicked.connect(self.salvar)
         btn_box.addWidget(btn_salvar)
@@ -243,11 +396,15 @@ class WhatsAppSettingsDialog(QDialog):
     def restaurar_padrao(self):
         self.txt_confirmacao.setPlainText(DEFAULT_MSG_CONFIRMACAO)
         self.txt_retorno.setPlainText(DEFAULT_MSG_RETORNO)
+        self.txt_pos_op.setPlainText(DEFAULT_MSG_POS_OPERATORIO)
+        self.txt_aniversario.setPlainText(DEFAULT_MSG_ANIVERSARIO)
 
     def salvar(self):
         set_setting("msg_confirmacao", self.txt_confirmacao.toPlainText().strip())
         set_setting("msg_retorno", self.txt_retorno.toPlainText().strip())
-        QMessageBox.information(self, "Sucesso", "Modelos de mensagens salvos com sucesso!")
+        set_setting("msg_pos_operatorio", self.txt_pos_op.toPlainText().strip())
+        set_setting("msg_aniversario", self.txt_aniversario.toPlainText().strip())
+        QMessageBox.information(self, "Sucesso", "Modelos de mensagens do WhatsApp atualizados com sucesso!")
         self.accept()
 
 
@@ -765,6 +922,136 @@ class ScheduleView(QWidget):
         layout_tab_retorno.addLayout(retorno_bottom)
         self.tabs.addTab(tab_retorno, "🔔 Lembretes de Retorno (6 Meses)")
 
+        # ---------------------------------------------------------
+        # ABA 4: ACOMPANHAMENTO PÓS-OPERATÓRIO (D+1 / D+2)
+        # ---------------------------------------------------------
+        tab_pos_op = QWidget()
+        layout_pos_op = QVBoxLayout(tab_pos_op)
+        layout_pos_op.setContentsMargins(14, 14, 14, 14)
+        layout_pos_op.setSpacing(12)
+
+        banner_pos = QFrame()
+        banner_pos.setStyleSheet("background-color: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 12px;")
+        b_lay_pos = QVBoxLayout(banner_pos)
+        b_lay_pos.setSpacing(4)
+        lbl_b_pos_tit = QLabel("🩺 Acompanhamento Humanizado Pós-Operatório (D+1)")
+        lbl_b_pos_tit.setStyleSheet("font-size: 15px; font-weight: bold; color: #0f766e;")
+        lbl_b_pos_sub = QLabel("Lista pacientes que realizaram consultas e procedimentos cirúrgicos ou invasivos nos últimos dias para contato preventivo e acolhimento via WhatsApp.")
+        lbl_b_pos_sub.setStyleSheet("font-size: 12px; color: #475569;")
+        b_lay_pos.addWidget(lbl_b_pos_tit)
+        b_lay_pos.addWidget(lbl_b_pos_sub)
+        layout_pos_op.addWidget(banner_pos)
+
+        self.table_pos_op = QTableWidget()
+        self.table_pos_op.setColumnCount(5)
+        self.table_pos_op.setHorizontalHeaderLabels(["ID", "Paciente", "Telefone", "Data Atendimento", "Procedimento Realizado"])
+        self.table_pos_op.setColumnHidden(0, True)
+        self.table_pos_op.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table_pos_op.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table_pos_op.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table_pos_op.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table_pos_op.setAlternatingRowColors(True)
+        self.table_pos_op.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table_pos_op.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table_pos_op.setStyleSheet("""
+            QTableWidget {
+                background-color: #ffffff;
+                color: #0f172a;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+            }
+            QHeaderView::section {
+                background-color: #f8fafc;
+                color: #334155;
+                font-weight: bold;
+                padding: 8px;
+                border: none;
+                border-bottom: 2px solid #cbd5e1;
+            }
+            QTableWidget::item { padding: 7px; }
+        """)
+        layout_pos_op.addWidget(self.table_pos_op)
+
+        pos_bottom = QHBoxLayout()
+        pos_bottom.addStretch()
+        btn_zap_pos = QPushButton("📲 Enviar Mensagem Pós-Operatória (WhatsApp)")
+        btn_zap_pos.setObjectName("whatsappBtn")
+        btn_zap_pos.clicked.connect(self.enviar_pos_operatorio_whatsapp)
+        pos_bottom.addWidget(btn_zap_pos)
+        layout_pos_op.addLayout(pos_bottom)
+
+        self.tabs.addTab(tab_pos_op, "🩺 Pós-Operatório (D+1)")
+
+        # ---------------------------------------------------------
+        # ABA 5: ANIVERSARIANTES E FELICITAÇÕES
+        # ---------------------------------------------------------
+        tab_niver = QWidget()
+        layout_niver = QVBoxLayout(tab_niver)
+        layout_niver.setContentsMargins(14, 14, 14, 14)
+        layout_niver.setSpacing(12)
+
+        banner_niver = QFrame()
+        banner_niver.setStyleSheet("background-color: #fdf4ff; border: 1px solid #f0abfc; border-radius: 8px; padding: 12px;")
+        b_lay_niv = QHBoxLayout(banner_niver)
+        b_v = QVBoxLayout()
+        b_v.setSpacing(4)
+        lbl_b_niv_tit = QLabel("🎉 Central de Felicitações e Aniversariantes")
+        lbl_b_niv_tit.setStyleSheet("font-size: 15px; font-weight: bold; color: #a21caf;")
+        lbl_b_niv_sub = QLabel("Fidelize pacientes enviando mensagens de carinho e felicitações com um clique.")
+        lbl_b_niv_sub.setStyleSheet("font-size: 12px; color: #701a75;")
+        b_v.addWidget(lbl_b_niv_tit)
+        b_v.addWidget(lbl_b_niv_sub)
+        b_lay_niv.addLayout(b_v)
+        b_lay_niv.addStretch()
+
+        self.chk_niver_hoje = QCheckBox("Apenas Aniversariantes de Hoje")
+        self.chk_niver_hoje.setChecked(False)
+        self.chk_niver_hoje.setStyleSheet("font-weight: 600; color: #a21caf;")
+        self.chk_niver_hoje.toggled.connect(self.carregar_aniversariantes)
+        b_lay_niv.addWidget(self.chk_niver_hoje)
+
+        layout_niver.addWidget(banner_niver)
+
+        self.table_niver = QTableWidget()
+        self.table_niver.setColumnCount(5)
+        self.table_niver.setHorizontalHeaderLabels(["ID", "Paciente", "Dia / Mês", "Idade", "Telefone"])
+        self.table_niver.setColumnHidden(0, True)
+        self.table_niver.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table_niver.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table_niver.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table_niver.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table_niver.setAlternatingRowColors(True)
+        self.table_niver.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table_niver.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table_niver.setStyleSheet("""
+            QTableWidget {
+                background-color: #ffffff;
+                color: #0f172a;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+            }
+            QHeaderView::section {
+                background-color: #f8fafc;
+                color: #334155;
+                font-weight: bold;
+                padding: 8px;
+                border: none;
+                border-bottom: 2px solid #cbd5e1;
+            }
+            QTableWidget::item { padding: 7px; }
+        """)
+        layout_niver.addWidget(self.table_niver)
+
+        niver_bottom = QHBoxLayout()
+        niver_bottom.addStretch()
+        btn_zap_niver = QPushButton("🎂 Enviar Felicitações (WhatsApp)")
+        btn_zap_niver.setObjectName("whatsappBtn")
+        btn_zap_niver.clicked.connect(self.enviar_aniversario_whatsapp)
+        niver_bottom.addWidget(btn_zap_niver)
+        layout_niver.addLayout(niver_bottom)
+
+        self.tabs.addTab(tab_niver, "🎉 Aniversariantes")
+
         self.tabs.currentChanged.connect(self.ao_mudar_aba)
         layout.addWidget(self.tabs)
 
@@ -776,6 +1063,10 @@ class ScheduleView(QWidget):
             self.carregar_agenda_do_dia()
         elif indice == 2:
             self.carregar_lembretes_retorno()
+        elif indice == 3:
+            self.carregar_pos_operatorio()
+        elif indice == 4:
+            self.carregar_aniversariantes()
 
     # -------------------------------------------------------------
     # MÉTODOS DA VISÃO SEMANAL
@@ -965,6 +1256,114 @@ class ScheduleView(QWidget):
             self.carregar_agenda_do_dia()
             self.carregar_lembretes_retorno()
 
+    # -------------------------------------------------------------
+    # MÉTODOS DO ACOMPANHAMENTO PÓS-OPERATÓRIO (D+1)
+    # -------------------------------------------------------------
+
+    def carregar_pos_operatorio(self):
+        pacientes = get_post_operative_patients(dias_max=2)
+        self.table_pos_op.setRowCount(len(pacientes))
+
+        for row_idx, r in enumerate(pacientes):
+            item_id = QTableWidgetItem(str(r["patient_id"]))
+            item_id.setTextAlignment(Qt.AlignCenter)
+            self.table_pos_op.setItem(row_idx, 0, item_id)
+
+            item_nome = QTableWidgetItem(r["nome"])
+            item_nome.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            self.table_pos_op.setItem(row_idx, 1, item_nome)
+
+            item_tel = QTableWidgetItem(r["telefone"] or "Sem telefone")
+            item_tel.setTextAlignment(Qt.AlignCenter)
+            self.table_pos_op.setItem(row_idx, 2, item_tel)
+
+            item_dt = QTableWidgetItem(f"{r['data_atendimento']} ({r['dias_passados']}d atrás)")
+            item_dt.setTextAlignment(Qt.AlignCenter)
+            item_dt.setForeground(QColor("#0f766e"))
+            self.table_pos_op.setItem(row_idx, 3, item_dt)
+
+            item_proc = QTableWidgetItem(r["procedimento"])
+            item_proc.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_pos_op.setItem(row_idx, 4, item_proc)
+
+            self.table_pos_op.item(row_idx, 0).setData(Qt.UserRole, r)
+
+    def enviar_pos_operatorio_whatsapp(self):
+        selected = self.table_pos_op.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Aviso", "Selecione um paciente na tabela de pós-operatório.")
+            return
+        row = selected[0].row()
+        p = self.table_pos_op.item(row, 0).data(Qt.UserRole)
+        if not p:
+            return
+
+        tel = p.get("telefone")
+        if not tel:
+            QMessageBox.warning(self, "Aviso", f"O paciente '{p['nome']}' não possui telefone cadastrado.")
+            return
+
+        msg = build_post_operative_message(p["nome"], p["procedimento"])
+        preview_dialog = SendWhatsAppPreviewDialog(tel, msg, parent=self)
+        preview_dialog.exec()
+
+    # -------------------------------------------------------------
+    # MÉTODOS DA CENTRAL DE ANIVERSARIANTES
+    # -------------------------------------------------------------
+
+    def carregar_aniversariantes(self):
+        apenas_hoje = self.chk_niver_hoje.isChecked()
+        aniversariantes = get_birthday_patients(apenas_hoje=apenas_hoje)
+        self.table_niver.setRowCount(len(aniversariantes))
+
+        for row_idx, r in enumerate(aniversariantes):
+            item_id = QTableWidgetItem(str(r["patient_id"]))
+            item_id.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 0, item_id)
+
+            nome_txt = r["nome"]
+            if r["e_hoje"]:
+                nome_txt = f"🎂 {nome_txt} (HOJE!)"
+
+            item_nome = QTableWidgetItem(nome_txt)
+            item_nome.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            if r["e_hoje"]:
+                item_nome.setForeground(QColor("#a21caf"))
+            self.table_niver.setItem(row_idx, 1, item_nome)
+
+            item_dia = QTableWidgetItem(r["dia_mes"])
+            item_dia.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 2, item_dia)
+
+            item_idade = QTableWidgetItem(f"{r['idade']} anos")
+            item_idade.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 3, item_idade)
+
+            item_tel = QTableWidgetItem(r["telefone"] or "Sem telefone")
+            item_tel.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 4, item_tel)
+
+            self.table_niver.item(row_idx, 0).setData(Qt.UserRole, r)
+
+    def enviar_aniversario_whatsapp(self):
+        selected = self.table_niver.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Aviso", "Selecione um paciente na tabela de aniversariantes.")
+            return
+        row = selected[0].row()
+        p = self.table_niver.item(row, 0).data(Qt.UserRole)
+        if not p:
+            return
+
+        tel = p.get("telefone")
+        if not tel:
+            QMessageBox.warning(self, "Aviso", f"O paciente '{p['nome']}' não possui telefone cadastrado.")
+            return
+
+        msg = build_birthday_message(p["nome"])
+        preview_dialog = SendWhatsAppPreviewDialog(tel, msg, parent=self)
+        preview_dialog.exec()
+
     def alterar_status_selecionado(self, novo_status: str):
         app = self.get_selected_appointment()
         if not app:
@@ -978,6 +1377,12 @@ class ScheduleView(QWidget):
             self.carregar_agenda_semanal()
             self.carregar_agenda_do_dia()
             self.carregar_lembretes_retorno()
+            self.carregar_pos_operatorio()
+
+            # Dispara automação de conclusão inteligente (Workflow 360°)
+            if novo_status == "Realizado":
+                dlg_concl = AppointmentConclusionDialog(app, self.current_user, parent=self)
+                dlg_concl.exec()
         else:
             QMessageBox.critical(self, "Erro", msg)
 
@@ -1085,3 +1490,111 @@ class ScheduleView(QWidget):
             self.carregar_agenda_semanal()
             self.carregar_agenda_do_dia()
             self.carregar_lembretes_retorno()
+
+    # -------------------------------------------------------------
+    # MÉTODOS DO ACOMPANHAMENTO PÓS-OPERATÓRIO (D+1)
+    # -------------------------------------------------------------
+
+    def carregar_pos_operatorio(self):
+        pacientes = get_post_operative_patients(dias_max=2)
+        self.table_pos_op.setRowCount(len(pacientes))
+
+        for row_idx, r in enumerate(pacientes):
+            item_id = QTableWidgetItem(str(r["patient_id"]))
+            item_id.setTextAlignment(Qt.AlignCenter)
+            self.table_pos_op.setItem(row_idx, 0, item_id)
+
+            item_nome = QTableWidgetItem(r["nome"])
+            item_nome.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            self.table_pos_op.setItem(row_idx, 1, item_nome)
+
+            item_tel = QTableWidgetItem(r["telefone"] or "Sem telefone")
+            item_tel.setTextAlignment(Qt.AlignCenter)
+            self.table_pos_op.setItem(row_idx, 2, item_tel)
+
+            item_dt = QTableWidgetItem(f"{r['data_atendimento']} ({r['dias_passados']}d atrás)")
+            item_dt.setTextAlignment(Qt.AlignCenter)
+            item_dt.setForeground(QColor("#0f766e"))
+            self.table_pos_op.setItem(row_idx, 3, item_dt)
+
+            item_proc = QTableWidgetItem(r["procedimento"])
+            item_proc.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_pos_op.setItem(row_idx, 4, item_proc)
+
+            self.table_pos_op.item(row_idx, 0).setData(Qt.UserRole, r)
+
+    def enviar_pos_operatorio_whatsapp(self):
+        selected = self.table_pos_op.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Aviso", "Selecione um paciente na tabela de pós-operatório.")
+            return
+        row = selected[0].row()
+        p = self.table_pos_op.item(row, 0).data(Qt.UserRole)
+        if not p:
+            return
+
+        tel = p.get("telefone")
+        if not tel:
+            QMessageBox.warning(self, "Aviso", f"O paciente '{p['nome']}' não possui telefone cadastrado.")
+            return
+
+        msg = build_post_operative_message(p["nome"], p["procedimento"])
+        preview_dialog = SendWhatsAppPreviewDialog(tel, msg, parent=self)
+        preview_dialog.exec()
+
+    # -------------------------------------------------------------
+    # MÉTODOS DA CENTRAL DE ANIVERSARIANTES
+    # -------------------------------------------------------------
+
+    def carregar_aniversariantes(self):
+        apenas_hoje = self.chk_niver_hoje.isChecked()
+        aniversariantes = get_birthday_patients(apenas_hoje=apenas_hoje)
+        self.table_niver.setRowCount(len(aniversariantes))
+
+        for row_idx, r in enumerate(aniversariantes):
+            item_id = QTableWidgetItem(str(r["patient_id"]))
+            item_id.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 0, item_id)
+
+            nome_txt = r["nome"]
+            if r["e_hoje"]:
+                nome_txt = f"🎂 {nome_txt} (HOJE!)"
+
+            item_nome = QTableWidgetItem(nome_txt)
+            item_nome.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            if r["e_hoje"]:
+                item_nome.setForeground(QColor("#a21caf"))
+            self.table_niver.setItem(row_idx, 1, item_nome)
+
+            item_dia = QTableWidgetItem(r["dia_mes"])
+            item_dia.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 2, item_dia)
+
+            item_idade = QTableWidgetItem(f"{r['idade']} anos")
+            item_idade.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 3, item_idade)
+
+            item_tel = QTableWidgetItem(r["telefone"] or "Sem telefone")
+            item_tel.setTextAlignment(Qt.AlignCenter)
+            self.table_niver.setItem(row_idx, 4, item_tel)
+
+            self.table_niver.item(row_idx, 0).setData(Qt.UserRole, r)
+
+    def enviar_aniversario_whatsapp(self):
+        selected = self.table_niver.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Aviso", "Selecione um paciente na tabela de aniversariantes.")
+            return
+        row = selected[0].row()
+        p = self.table_niver.item(row, 0).data(Qt.UserRole)
+        if not p:
+            return
+
+        tel = p.get("telefone")
+        if not tel:
+            QMessageBox.warning(self, "Aviso", f"O paciente '{p['nome']}' não possui telefone cadastrado.")
+            return
+
+        msg = build_birthday_message(p["nome"])
+        preview_dialog = SendWhatsAppPreviewDialog(tel, msg, parent=self)
+        preview_dialog.exec()

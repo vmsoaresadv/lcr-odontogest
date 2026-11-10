@@ -27,6 +27,19 @@ DEFAULT_MSG_RETORNO = (
     "Vamos agendar seu retorno desta semana? Qual dia e turno (manhã ou tarde) fica melhor para você?"
 )
 
+DEFAULT_MSG_POS_OPERATORIO = (
+    "Olá, {paciente}! Tudo bem? Aqui é a Dra. Lara Camila da *LCR Odontologia*. 😊\n\n"
+    "Passando para saber como você está se sentindo hoje após o atendimento de ontem ({procedimento}).\n\n"
+    "Está sentindo algum desconforto ou dor? Lembrando de seguir as orientações, tomar as medicações prescritas e manter o repouso recomendado.\n\n"
+    "Se precisar de qualquer suporte ou orientação, estou por aqui! Desejo uma ótima recuperação. ✨"
+)
+
+DEFAULT_MSG_ANIVERSARIO = (
+    "Olá, {paciente}! 🎉🎂\n\n"
+    "Hoje é um dia muito especial! A Dra. Lara Camila e toda a equipe da *LCR Odontologia* passam para lhe desejar um Feliz Aniversário!\n\n"
+    "Que seu novo ciclo seja repleto de saúde, conquistas, momentos felizes e muitos motivos para sorrir! Parabéns pelo seu dia! ✨🎈"
+)
+
 
 def get_setting(chave: str, default: str) -> str:
     """Busca configuração salva no banco de dados SQLite."""
@@ -108,6 +121,32 @@ def build_return_message(patient_name: str, ultima_consulta_str: str) -> str:
         paciente=primeiro_nome,
         paciente_completo=patient_name.strip(),
         ultima_consulta=ultima_consulta_str,
+        clinica="LCR Clínica Odontológica",
+        dentista="Dra. Lara Camila"
+    )
+
+
+def build_post_operative_message(patient_name: str, procedimento: str = "procedimento clínico") -> str:
+    """Gera a mensagem de acompanhamento pós-operatório para envio no D+1 ou D+2."""
+    template = get_setting("msg_pos_operatorio", DEFAULT_MSG_POS_OPERATORIO)
+    primeiro_nome = patient_name.strip().split()[0]
+    proc_desc = procedimento.strip() if procedimento else "procedimento odontológico"
+    return template.format(
+        paciente=primeiro_nome,
+        paciente_completo=patient_name.strip(),
+        procedimento=proc_desc,
+        clinica="LCR Clínica Odontológica",
+        dentista="Dra. Lara Camila"
+    )
+
+
+def build_birthday_message(patient_name: str) -> str:
+    """Gera a mensagem carinhosa de felicitações de aniversário."""
+    template = get_setting("msg_aniversario", DEFAULT_MSG_ANIVERSARIO)
+    primeiro_nome = patient_name.strip().split()[0]
+    return template.format(
+        paciente=primeiro_nome,
+        paciente_completo=patient_name.strip(),
         clinica="LCR Clínica Odontológica",
         dentista="Dra. Lara Camila"
     )
@@ -340,4 +379,133 @@ def get_return_reminders(dias_minimos: int = 180) -> List[dict]:
 
     conn.close()
     resultado.sort(key=lambda x: x["dias_decorridos"], reverse=True)
+    return resultado
+
+
+def get_post_operative_patients(dias_max: int = 2) -> List[dict]:
+    """
+    Retorna pacientes que realizaram procedimentos ou consultas nos últimos dias (D+1 ou D+2)
+    para acompanhamento pós-operatório humanizado via WhatsApp.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    hoje = date.today()
+    resultado = []
+    vistos = set()
+
+    # 1. Busca por consultas realizadas recentemente
+    cursor.execute("""
+        SELECT a.id, a.patient_id, a.data_consulta, a.horario, a.procedimento,
+               p.nome, p.telefone, p.cpf
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        WHERE a.status = 'Realizado'
+        ORDER BY a.data_consulta DESC, a.horario DESC
+    """)
+    for row in cursor.fetchall():
+        d_cons = parse_any_date(row["data_consulta"])
+        if not d_cons:
+            continue
+        dias_passados = (hoje - d_cons).days
+        if 1 <= dias_passados <= dias_max and row["patient_id"] not in vistos:
+            vistos.add(row["patient_id"])
+            resultado.append({
+                "patient_id": row["patient_id"],
+                "nome": row["nome"],
+                "telefone": row["telefone"] or "",
+                "cpf": row["cpf"] or "",
+                "data_atendimento": d_cons.strftime("%d/%m/%Y"),
+                "dias_passados": dias_passados,
+                "procedimento": row["procedimento"] or "Consulta Odontológica",
+                "horario": row["horario"] or ""
+            })
+
+    # 2. Busca também em prontuários clínicos caso o procedimento tenha sido lançado diretamente
+    cursor.execute("""
+        SELECT r.id, r.patient_id, r.data_hora, r.procedimento, r.dente_regiao,
+               p.nome, p.telefone, p.cpf
+        FROM patient_records r
+        JOIN patients p ON p.id = r.patient_id
+        ORDER BY r.data_hora DESC
+    """)
+    for row in cursor.fetchall():
+        if row["patient_id"] in vistos:
+            continue
+        d_rec = parse_any_date(row["data_hora"])
+        if not d_rec:
+            continue
+        dias_passados = (hoje - d_rec).days
+        if 1 <= dias_passados <= dias_max:
+            vistos.add(row["patient_id"])
+            dente_info = f" (Dente {row['dente_regiao']})" if row['dente_regiao'] else ""
+            resultado.append({
+                "patient_id": row["patient_id"],
+                "nome": row["nome"],
+                "telefone": row["telefone"] or "",
+                "cpf": row["cpf"] or "",
+                "data_atendimento": d_rec.strftime("%d/%m/%Y"),
+                "dias_passados": dias_passados,
+                "procedimento": f"{row['procedimento'] or 'Procedimento Clínico'}{dente_info}",
+                "horario": ""
+            })
+
+    conn.close()
+    resultado.sort(key=lambda x: x["dias_passados"])
+    return resultado
+
+
+def get_birthday_patients(apenas_hoje: bool = False) -> List[dict]:
+    """
+    Retorna pacientes que fazem aniversário hoje (se apenas_hoje=True)
+    ou durante o mês atual com destaque para o dia de aniversário.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    hoje = date.today()
+    mes_atual = hoje.month
+    dia_atual = hoje.day
+
+    cursor.execute("""
+        SELECT id, nome, telefone, cpf, data_nascimento
+        FROM patients
+        WHERE (ativo IS NULL OR ativo = 1) AND data_nascimento IS NOT NULL AND data_nascimento != ''
+    """)
+    rows = cursor.fetchall()
+    resultado = []
+
+    for r in rows:
+        d_nasc = parse_any_date(r["data_nascimento"])
+        if not d_nasc:
+            continue
+
+        e_hoje = (d_nasc.day == dia_atual and d_nasc.month == mes_atual)
+        mesmo_mes = (d_nasc.month == mes_atual)
+
+        if apenas_hoje and not e_hoje:
+            continue
+        if not apenas_hoje and not mesmo_mes:
+            continue
+
+        # Calcula idade a completar ou já completada
+        idade = hoje.year - d_nasc.year
+        if (hoje.month, hoje.day) < (d_nasc.month, d_nasc.day):
+            idade -= 1
+
+        resultado.append({
+            "patient_id": r["id"],
+            "nome": r["nome"],
+            "telefone": r["telefone"] or "",
+            "cpf": r["cpf"] or "",
+            "data_nascimento": d_nasc.strftime("%d/%m/%Y"),
+            "dia_mes": f"{d_nasc.day:02d}/{d_nasc.month:02d}",
+            "dia": d_nasc.day,
+            "idade": idade,
+            "e_hoje": e_hoje
+        })
+
+    conn.close()
+    # Ordena: aniversariantes de hoje no topo, depois pela ordem dos dias do mês
+    resultado.sort(key=lambda x: (not x["e_hoje"], x["dia"]))
     return resultado
