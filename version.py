@@ -8,7 +8,7 @@ CLINICA_NOME = "LCR Odontologia"
 RESPONSAVEL_NOME = "Dra. Lara Camila"
 RESPONSAVEL_CRO = "CRO-BA 15247"
 CIDADE_ESTADO = "Irecê - Bahia"
-GITHUB_REPO = "vinicius-ms/lcr-odontogest"  # Repositorio base configuravel
+GITHUB_REPO = "vmsoaresadv/lcr-odontogest"  # Repositorio oficial
 
 
 def get_app_dir() -> Path:

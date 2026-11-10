@@ -16,7 +16,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "REPO=vinicius-ms/lcr-odontogest"
+set "REPO=vmsoaresadv/lcr-odontogest"
 set "DEST_DIR=C:\LCR-OdontoGest"
 set "TEMP_ZIP=%TEMP%\LCR-OdontoGest-Latest.zip"
 
