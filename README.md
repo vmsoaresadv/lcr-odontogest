@@ -1,7 +1,6 @@
-# LCR OdontoGest
+# OdontoGest
 
-Sistema Desktop de Gestão Odontológica e Clínica Integrada.  
-**Responsável Técnica:** Dra. Lara Camila (CRO-BA 15247, Irecê - Bahia).
+Sistema Desktop de Gestão Odontológica e Clínica Integrada.
 
 ---
 
@@ -83,5 +82,5 @@ O executável independente será gerado na pasta `dist/LCR-OdontoGest/`.
 
 ## 🔒 Privacidade e LGPD
 
-Este repositório é de uso estrito e exclusivo da **LCR Clínica Odontológica**.  
-Dados de saúde, fichas médicas e arquivos de pacientes nunca são versionados neste repositório.
+Este repositório contém estritamente o código-fonte da aplicação.  
+Dados de saúde, fichas médicas, prontuários e arquivos de pacientes são armazenados exclusivamente de forma local e nunca são versionados neste repositório.
