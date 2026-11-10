@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 # LCR OdontoGest - Versao Oficial
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 APP_NAME = "LCR OdontoGest"
 CLINICA_NOME = "LCR Odontologia"
 RESPONSAVEL_NOME = "Dra. Lara Camila"
