@@ -24,6 +24,7 @@ from ui.odontograma_widget import OdontogramaWidget
 from ui.anamnese_widget import AnamneseWidget
 from ui.budget_widget import BudgetWidget
 from ui.photo_comparator_dialog import PhotoComparatorDialog
+from ui.clinical_docs_widget import ClinicalDocsWidget
 
 def aplicar_mascara_cpf(texto: str) -> str:
     """Aplica máscara progressiva de CPF: 000.000.000-00."""
@@ -812,37 +813,9 @@ class PatientDetailDialog(QDialog):
         layout_anexos.addLayout(anexos_bottom_bar)
         self.tabs.addTab(tab_anexos, "Exames e Anexos")
 
-        # Aba 5: Declaração / Atestado Odontológico
-        tab_atestado = QWidget()
-        layout_atestado = QVBoxLayout(tab_atestado)
-        layout_atestado.setSpacing(10)
-
-        lbl_atestado_title = QLabel("Emissão de Atestado / Declaração de Comparecimento")
-        lbl_atestado_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #166260;")
-        layout_atestado.addWidget(lbl_atestado_title)
-
-        self.txt_atestado = QTextEdit()
-        hoje = datetime.now().strftime("%d/%m/%Y")
-        hora = datetime.now().strftime("%H:%M")
-        texto_padrao = (
-            f"DECLARAÇÃO DE COMPARECIMENTO ODONTOLÓGICO\n\n"
-            f"Declaro para os devidos fins que o(a) paciente {self.patient['nome']}, "
-            f"portador(a) do CPF nº {self.patient['cpf'] or '___________________'}, compareceu a esta clínica odontológica "
-            f"no dia {hoje}, às {hora} horas, para realização de atendimento odontológico.\n\n\n"
-            f"_____________________________________________\n"
-            f"Dra. Lara Camila • Cirurgiã-Dentista\n"
-            f"CRO-BA 15247 • LCR Clínica Odontológica\n"
-            f"Irecê - Bahia"
-        )
-        self.txt_atestado.setPlainText(texto_padrao)
-        layout_atestado.addWidget(self.txt_atestado)
-
-        btn_copiar = QPushButton("Copiar Texto do Atestado")
-        btn_copiar.setObjectName("primaryBtn")
-        btn_copiar.clicked.connect(self.copiar_atestado)
-        layout_atestado.addWidget(btn_copiar, alignment=Qt.AlignRight)
-
-        self.tabs.addTab(tab_atestado, "Atestados e Documentos")
+        # Aba 5: Receituários e Atestados Inteligentes (Fase 8)
+        self.tab_clinical_docs = ClinicalDocsWidget(self.patient_id, self.current_user, self)
+        self.tabs.addTab(self.tab_clinical_docs, "Receituários e Atestados")
 
         main_layout.addWidget(self.tabs)
 

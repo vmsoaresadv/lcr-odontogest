@@ -21,6 +21,65 @@ from services.budget_service import (
 from services.report_service import exportar_html_para_pdf
 
 
+BUDGET_DIALOG_STYLE = """
+QDialog {
+    background-color: #f8fafc;
+    font-family: 'Segoe UI', sans-serif;
+    color: #0f172a;
+}
+QLabel {
+    color: #334155;
+    font-weight: 600;
+}
+QLineEdit, QComboBox, QTextEdit, QSpinBox, QDoubleSpinBox {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    min-height: 24px;
+    selection-background-color: #0f766e;
+    selection-color: #ffffff;
+}
+QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 2px solid #0f766e;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border-left: 1px solid #cbd5e1;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background-color: #f8fafc;
+}
+QComboBox::down-arrow {
+    width: 0px;
+    height: 0px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #64748b;
+    margin-top: 2px;
+}
+QTableWidget {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    gridline-color: #f1f5f9;
+}
+QHeaderView::section {
+    background-color: #f1f5f9;
+    color: #475569;
+    font-weight: bold;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #cbd5e1;
+    border-bottom: 1px solid #cbd5e1;
+}
+"""
+
 class BudgetFormDialog(QDialog):
     """Diálogo de criação e composição de novo Orçamento / Plano de Tratamento."""
     def __init__(self, patient_id: int, current_user: dict, parent=None):
@@ -29,6 +88,7 @@ class BudgetFormDialog(QDialog):
         self.current_user = current_user
         self.setWindowTitle("Novo Orçamento / Plano de Tratamento")
         self.resize(780, 560)
+        self.setStyleSheet(BUDGET_DIALOG_STYLE)
         self.init_ui()
 
     def init_ui(self):
@@ -176,7 +236,7 @@ class BudgetFormDialog(QDialog):
         h_botoes.addStretch()
 
         btn_cancelar = QPushButton("Cancelar")
-        btn_cancelar.setStyleSheet("padding: 7px 16px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;")
+        btn_cancelar.setStyleSheet("padding: 7px 16px; background-color: #ffffff; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px;")
         btn_cancelar.clicked.connect(self.reject)
         h_botoes.addWidget(btn_cancelar)
 
@@ -193,21 +253,25 @@ class BudgetFormDialog(QDialog):
 
         txt_dente = QLineEdit(dente)
         txt_dente.setPlaceholderText("Ex: 16")
+        txt_dente.setStyleSheet("background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px;")
         self.table_itens.setCellWidget(row, 0, txt_dente)
 
         txt_proc = QLineEdit(proc)
         txt_proc.setPlaceholderText("Ex: Restauração em Resina Composta")
+        txt_proc.setStyleSheet("background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px;")
         self.table_itens.setCellWidget(row, 1, txt_proc)
 
         spin_qtd = QSpinBox()
         spin_qtd.setMinimum(1)
         spin_qtd.setValue(1)
+        spin_qtd.setStyleSheet("background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold;")
         spin_qtd.valueChanged.connect(self.recalcular_totais)
         self.table_itens.setCellWidget(row, 2, spin_qtd)
 
         spin_vu = QDoubleSpinBox()
         spin_vu.setMaximum(99999.0)
         spin_vu.setValue(vu)
+        spin_vu.setStyleSheet("background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold;")
         spin_vu.valueChanged.connect(self.recalcular_totais)
         self.table_itens.setCellWidget(row, 3, spin_vu)
 

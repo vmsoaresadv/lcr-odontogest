@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QDialog, QTabWidget, QTextEdit, QComboBox,
-    QDateEdit, QFrame, QScrollArea, QGridLayout, QSizePolicy
+    QDateEdit, QFrame, QScrollArea, QGridLayout, QSizePolicy, QListView
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor
@@ -44,7 +44,7 @@ QTabBar::tab:selected {
     background-color: #2ca5a9;
     color: #ffffff;
 }
-QLineEdit, QComboBox, QDateEdit, QTextEdit {
+QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox, QTextEdit {
     background-color: #ffffff;
     color: #0f172a;
     border: 1px solid #cbd5e1;
@@ -54,8 +54,28 @@ QLineEdit, QComboBox, QDateEdit, QTextEdit {
     selection-background-color: #2ca5a9;
     selection-color: #ffffff;
 }
-QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus {
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus, QSpinBox:focus, QTextEdit:focus {
     border: 2px solid #2ca5a9;
+}
+QComboBox {
+    padding-right: 28px;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border-left: 1px solid #cbd5e1;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background-color: #f8fafc;
+}
+QComboBox::down-arrow {
+    width: 0px;
+    height: 0px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #64748b;
+    margin-top: 2px;
 }
 QScrollBar:vertical {
     border: none;
@@ -286,7 +306,7 @@ class NewAppointmentDialog(QDialog):
         self.preselected_patient_id = preselected_patient_id
         self.initial_date = initial_date
         self.setWindowTitle("Novo Agendamento de Consulta")
-        self.setFixedSize(480, 500)
+        self.setFixedSize(520, 520)
         self.setStyleSheet(SCHEDULE_STYLE)
         self.init_ui()
 
@@ -299,7 +319,9 @@ class NewAppointmentDialog(QDialog):
         title.setStyleSheet("font-size: 17px; font-weight: bold; color: #166260;")
         layout.addWidget(title)
 
-        layout.addWidget(QLabel("Paciente (*):"))
+        lbl_pac = QLabel("Paciente (*):")
+        lbl_pac.setStyleSheet("font-weight: 600; color: #334155;")
+        layout.addWidget(lbl_pac)
         self.cmb_paciente = QComboBox()
         self.cmb_paciente.setEditable(True)
         self.cmb_paciente.setInsertPolicy(QComboBox.NoInsert)
@@ -307,21 +329,55 @@ class NewAppointmentDialog(QDialog):
         layout.addWidget(self.cmb_paciente)
 
         row_dt = QHBoxLayout()
+        row_dt.setSpacing(14)
+
         v_data = QVBoxLayout()
-        v_data.addWidget(QLabel("Data da Consulta (*):"))
+        v_data.setSpacing(4)
+        lbl_data = QLabel("Data da Consulta (*):")
+        lbl_data.setStyleSheet("font-weight: 600; color: #334155;")
+        v_data.addWidget(lbl_data)
         self.dt_data = CustomDateEdit()
         data_padrao = self.initial_date if self.initial_date else QDate.currentDate()
         self.dt_data.setDate(data_padrao)
         v_data.addWidget(self.dt_data)
-        row_dt.addLayout(v_data)
+        row_dt.addLayout(v_data, 6)
 
         v_hora = QVBoxLayout()
-        v_hora.addWidget(QLabel("Horário (*):"))
+        v_hora.setSpacing(4)
+        lbl_hora = QLabel("Horário (*):")
+        lbl_hora.setStyleSheet("font-weight: 600; color: #334155;")
+        v_hora.addWidget(lbl_hora)
         self.cmb_horario = QComboBox()
+        self.cmb_horario.setView(QListView())
+        self.cmb_horario.setMinimumWidth(130)
+        self.cmb_horario.setFixedHeight(34)
+        self.cmb_horario.setStyleSheet("""
+            QComboBox {
+                background-color: #ffffff;
+                color: #0f766e;
+                font-size: 13px;
+                font-weight: bold;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding-left: 12px;
+                padding-right: 28px;
+            }
+            QComboBox:focus {
+                border: 2px solid #0f766e;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px;
+                border-left: 1px solid #cbd5e1;
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 5px;
+                background-color: #f8fafc;
+            }
+        """)
         for h in range(7, 21):
-            for m in (0, 30):
+            for m in (0, 15, 30, 45):
                 self.cmb_horario.addItem(f"{h:02d}:{m:02d}")
-        self.cmb_horario.setEditable(True)
 
         # Sugestão inteligente de horário baseada no horário local atual da clínica
         agora = datetime.now()
@@ -337,10 +393,12 @@ class NewAppointmentDialog(QDialog):
             self.cmb_horario.setCurrentIndex(idx_hora)
 
         v_hora.addWidget(self.cmb_horario)
-        row_dt.addLayout(v_hora)
+        row_dt.addLayout(v_hora, 4)
         layout.addLayout(row_dt)
 
-        layout.addWidget(QLabel("Procedimento Previsto:"))
+        lbl_proc = QLabel("Procedimento Previsto:")
+        lbl_proc.setStyleSheet("font-weight: 600; color: #334155;")
+        layout.addWidget(lbl_proc)
         self.cmb_procedimento = QComboBox()
         self.cmb_procedimento.setEditable(True)
         procs = [

@@ -13,10 +13,10 @@ from services.audit_service import log_action
 # -------------------------------------------------------------
 
 DEFAULT_MSG_CONFIRMACAO = (
-    "Olá, {paciente}! Tudo bem?\n\n"
-    "Aqui é da *LCR Clínica Odontológica* (Dra. Lara Camila).\n\n"
-    "Passando para lembrar e confirmar sua consulta marcada para *{data} às {horario}*.\n\n"
-    "Podemos confirmar seu horário? Aguardamos sua resposta!"
+    "Olá, {paciente}! Tudo bem? 😊\n\n"
+    "Passando para confirmar sua consulta odontológica com a Dra. Lara Camila na *LCR Odontologia*, "
+    "agendada para *{data} às {horario}*.\n\n"
+    "Podemos confirmar sua presença? Ficamos no aguardo da sua resposta! ✨"
 )
 
 DEFAULT_MSG_RETORNO = (

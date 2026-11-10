@@ -24,15 +24,15 @@ class TestPhase7(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication(sys.argv)
 
     def test_version_constants_and_parsing(self):
-        self.assertEqual(__version__, "1.0.1")
+        self.assertEqual(__version__, "1.1.0")
         self.assertEqual(APP_NAME, "LCR OdontoGest")
 
-        v_atual = parse_version_tuple("1.0.1")
-        v_nova = parse_version_tuple("v1.0.2")
+        v_atual = parse_version_tuple("1.1.0")
+        v_nova = parse_version_tuple("v1.1.1")
         v_maior = parse_version_tuple("2.0.0")
 
-        self.assertEqual(v_atual, (1, 0, 1))
-        self.assertEqual(v_nova, (1, 0, 2))
+        self.assertEqual(v_atual, (1, 1, 0))
+        self.assertEqual(v_nova, (1, 1, 1))
         self.assertTrue(v_nova > v_atual)
         self.assertTrue(v_maior > v_nova)
 

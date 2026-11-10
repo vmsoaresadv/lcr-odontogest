@@ -450,6 +450,108 @@ def init_db():
     except Exception:
         pass
 
+    # 18. Tabela de Modelos de Medicamentos e Prescrições
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prescription_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome_medicamento TEXT NOT NULL,
+            concentracao_forma TEXT,
+            posologia TEXT NOT NULL,
+            orientacoes TEXT,
+            categoria TEXT DEFAULT 'Geral',
+            ativo INTEGER NOT NULL DEFAULT 1,
+            criado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+        );
+    """)
+
+    # Popula modelos padrão de medicamentos odontológicos se vazio
+    cursor.execute("SELECT COUNT(*) FROM prescription_templates")
+    if cursor.fetchone()[0] == 0:
+        medicamentos_padrao = [
+            ("Amoxicilina", "500mg (Cápsulas)", "Tomar 1 cápsula via oral a cada 8 horas durante 7 dias.", "Iniciar conforme orientação clínica. Não interromper o tratamento antes do prazo.", "Antibióticos"),
+            ("Amoxicilina + Clavulanato de Potássio", "875mg + 125mg (Comprimidos)", "Tomar 1 comprimido via oral de 12 em 12 horas por 7 dias.", "Tomar preferencialmente no início das refeições para reduzir desconforto gástrico.", "Antibióticos"),
+            ("Ibuprofeno", "600mg (Comprimidos)", "Tomar 1 comprimido via oral a cada 8 horas em caso de dor ou inflamação, por até 3 a 5 dias.", "Não ingerir em jejum. Em caso de gastrite/úlcera, consulte a cirurgiã-dentista.", "Anti-inflamatórios"),
+            ("Nimesulida", "100mg (Comprimidos)", "Tomar 1 comprimido via oral a cada 12 horas após as refeições, por no máximo 3 dias.", "Uso restrito para controle de edema e dor pós-operatória aguda.", "Anti-inflamatórios"),
+            ("Dipirona Monoidratada", "500mg (Comprimidos)", "Tomar 1 a 2 comprimidos via oral a cada 6 horas se houver dor moderada.", "Não ultrapassar a dose máxima de 4g ao dia.", "Analgésicos"),
+            ("Paracetamol", "750mg (Comprimidos)", "Tomar 1 comprimido via oral a cada 6 ou 8 horas em caso de dor leve a moderada.", "Alternativa analgésica segura para pacientes com restrição a anti-inflamatórios.", "Analgésicos"),
+            ("Dexametasona", "4mg (Comprimidos)", "Tomar 1 comprimido via oral dose única 1 hora antes do procedimento cirúrgico.", "Profilaxia de edema e dor para cirurgias de terceiros molares ou implantes.", "Corticoides"),
+            ("Digliconato de Clorhexidina", "0,12% (Solução Bucal)", "Bochechar 15ml da solução pura durante 1 minuto, a cada 12 horas, por 7 dias.", "Não engolir. Realizar 30 minutos após a escovação dental.", "Antissépticos")
+        ]
+        for m_nome, m_conc, m_poso, m_ori, m_cat in medicamentos_padrao:
+            cursor.execute("""
+                INSERT INTO prescription_templates (nome_medicamento, concentracao_forma, posologia, orientacoes, categoria)
+                VALUES (?, ?, ?, ?, ?)
+            """, (m_nome, m_conc, m_poso, m_ori, m_cat))
+
+    # 19. Tabela de Modelos de Atestados e Declarações Odontológicas
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS certificate_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT NOT NULL,
+            tipo TEXT NOT NULL CHECK(tipo IN ('Atestado', 'Declaracao', 'Outro')),
+            dias_repouso INTEGER DEFAULT 1,
+            texto_padrao TEXT NOT NULL,
+            observacoes TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1,
+            criado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            atualizado_em TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+        );
+    """)
+
+    # Popula modelos padrão de atestados se vazio
+    cursor.execute("SELECT COUNT(*) FROM certificate_templates")
+    if cursor.fetchone()[0] == 0:
+        atestados_padrao = [
+            (
+                "Atestado de Repouso Pós-Operatório (Cirurgia / Extração)",
+                "Atestado",
+                2,
+                "Atesto para os devidos fins de comprovação e dispensa laboral que o(a) paciente {paciente}, portador(a) do CPF nº {cpf}, esteve sob meus cuidados profissionais no dia de hoje, tendo sido submetido(a) a procedimento cirúrgico odontológico sob anestesia local, necessitando de {dias} dia(s) de repouso e afastamento de suas atividades normais a partir desta data para adequada recuperação cicatricial e hemostasia."
+            ),
+            (
+                "Atestado de Afastamento por Urgência Odontológica (1 Dia)",
+                "Atestado",
+                1,
+                "Atesto para os devidos fins que o(a) paciente {paciente}, portador(a) do CPF nº {cpf}, foi atendido(a) nesta clínica odontológica em caráter de urgência para tratamento odontológico, necessitando de {dias} dia(s) de afastamento de suas atividades laborais para alívio do quadro álgico e medicação."
+            ),
+            (
+                "Declaração de Comparecimento / Consulta Eletiva (Turno)",
+                "Declaracao",
+                0,
+                "Declaro para os devidos fins de justificativa que o(a) paciente {paciente}, portador(a) do CPF nº {cpf}, compareceu a este consultório odontológico no dia {data}, no período das {horario_inicio} às {horario_fim}, para realização de consulta e procedimentos clínicos odontológicos eletivos."
+            )
+        ]
+        for a_tit, a_tipo, a_dias, a_txt in atestados_padrao:
+            cursor.execute("""
+                INSERT INTO certificate_templates (titulo, tipo, dias_repouso, texto_padrao)
+                VALUES (?, ?, ?, ?)
+            """, (a_tit, a_tipo, a_dias, a_txt))
+
+    # 20. Tabela de Emissões de Prescrições e Atestados Emitidos para Pacientes
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS issued_clinical_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo_documento TEXT NOT NULL CHECK(tipo_documento IN ('Receituario', 'Atestado', 'Declaracao')),
+            patient_id INTEGER NOT NULL,
+            paciente_nome TEXT NOT NULL,
+            paciente_cpf TEXT,
+            titulo TEXT NOT NULL,
+            conteudo_json TEXT NOT NULL,
+            cid TEXT,
+            dias_repouso INTEGER DEFAULT 0,
+            observacoes TEXT,
+            user_id INTEGER,
+            usuario_nome TEXT NOT NULL,
+            data_emissao TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_pac ON issued_clinical_documents(patient_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_data ON issued_clinical_documents(data_emissao DESC);")
+
     conn.commit()
     conn.close()
 

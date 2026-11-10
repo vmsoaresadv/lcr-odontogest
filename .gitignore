@@ -38,5 +38,15 @@ dist/
 # Logs locais
 *.log
 
+# Segredos e Tokens de Autenticação (NUNCA versionar)
+.github_token
+github_token.txt
+.env
+*.token
+
 # Atalhos Windows
 *.lnk
+
+# Arquivos temporários e capturas de teste
+.tmp.driveupload/
+tests/screenshots/
