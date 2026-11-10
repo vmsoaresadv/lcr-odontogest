@@ -46,6 +46,15 @@ def compilar():
     elif (BASE_DIR / "uploads").exists():
         shutil.copytree(BASE_DIR / "uploads", temp_backup_dir / "uploads", dirs_exist_ok=True)
 
+    # Remove atributos somente-leitura e limpa a pasta de destino para evitar erro de permissão do PyInstaller
+    if exe_dir.exists():
+        try:
+            subprocess.run(["attrib", "-r", "-s", "-h", str(exe_dir / "*"), "/s", "/d"], capture_output=True)
+            subprocess.run(["attrib", "-r", "-s", "-h", str(exe_dir), "/d"], capture_output=True)
+            shutil.rmtree(exe_dir, ignore_errors=True)
+        except Exception:
+            pass
+
     # 3. Comando PyInstaller
     cmd = [
         sys.executable, "-m", "PyInstaller",

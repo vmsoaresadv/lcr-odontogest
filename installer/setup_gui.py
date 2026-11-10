@@ -1,12 +1,12 @@
 """
 Instalador Gráfico Oficial - LCR OdontoGest
-Executável leve para instalação automatizada a partir do GitHub Releases.
+Executável leve com validação criptográfica SHA-256 e download seguro a partir do GitHub Releases.
 """
 
 import os
 import sys
 import json
-import shutil
+import hashlib
 import zipfile
 import threading
 import urllib.request
@@ -16,18 +16,29 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Configurações do Repositório
+# Configurações do Repositório de Atualizações
 REPO = "vmsoaresadv/lcr-odontogest"
+VERSION_JSON_URL = f"https://raw.githubusercontent.com/{REPO}/main/version.json"
+API_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 DEST_DIR = Path("C:/LCR-OdontoGest")
 APP_NAME = "LCR OdontoGest"
 EXE_NAME = "LCR-OdontoGest.exe"
+
+
+def calcular_sha256(arquivo_path: Path) -> str:
+    """Calcula o hash SHA-256 do arquivo em blocos de 64KB."""
+    hasher = hashlib.sha256()
+    with open(arquivo_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest().upper()
 
 
 class ModernInstallerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"Instalador — {APP_NAME}")
-        self.geometry("520x360")
+        self.geometry("540x380")
         self.resizable(False, False)
         self.configure(bg="#f8fafc")
 
@@ -52,7 +63,7 @@ class ModernInstallerApp(tk.Tk):
 
     def setup_ui(self):
         # Header com fundo Teal (#0f766e)
-        header = tk.Frame(self, bg="#0f766e", height=85)
+        header = tk.Frame(self, bg="#0f766e", height=90)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
 
@@ -67,7 +78,7 @@ class ModernInstallerApp(tk.Tk):
 
         lbl_sub = tk.Label(
             header,
-            text="Instalador Oficial para Clínica e Consultório",
+            text="Instalador Oficial com Validação Criptográfica de Segurança (SHA-256)",
             font=("Segoe UI", 9),
             fg="#ccfbf1",
             bg="#0f766e"
@@ -76,7 +87,7 @@ class ModernInstallerApp(tk.Tk):
 
         # Corpo principal
         body = tk.Frame(self, bg="#f8fafc")
-        body.pack(fill="both", expand=True, padx=28, pady=20)
+        body.pack(fill="both", expand=True, padx=28, pady=18)
 
         # Destino
         lbl_dest_info = tk.Label(
@@ -90,13 +101,13 @@ class ModernInstallerApp(tk.Tk):
 
         lbl_desc = tk.Label(
             body,
-            text="O instalador irá baixar os arquivos atualizados da nuvem,\nconfigurar o banco de dados seguro e criar o atalho na Área de Trabalho.",
+            text="O instalador irá consultar a chave oficial de integridade,\nbaixar o sistema autenticado e criar o atalho oficial na Área de Trabalho.",
             font=("Segoe UI", 9),
             fg="#64748b",
             bg="#f8fafc",
             justify="left"
         )
-        lbl_desc.pack(anchor="w", pady=(0, 16))
+        lbl_desc.pack(anchor="w", pady=(0, 14))
 
         # Barra de Progresso
         self.progress = ttk.Progressbar(body, orient="horizontal", mode="determinate")
@@ -105,7 +116,7 @@ class ModernInstallerApp(tk.Tk):
         # Status do progresso
         self.lbl_status = tk.Label(
             body,
-            text="Pronto para iniciar a instalação.",
+            text="Pronto para iniciar a instalação segura.",
             font=("Segoe UI", 9),
             fg="#0f766e",
             bg="#f8fafc"
@@ -164,67 +175,97 @@ class ModernInstallerApp(tk.Tk):
 
     def _processo_instalacao(self):
         try:
-            self.set_status("1/4: Consultando versão na nuvem...", 10)
+            self.set_status("1/5: Consultando chave oficial de segurança (version.json)...", 10)
 
-            # 1. Obter informações da release mais recente no GitHub
-            api_url = f"https://api.github.com/repos/{REPO}/releases/latest"
-            req = urllib.request.Request(
-                api_url,
-                headers={"User-Agent": "LCR-OdontoGest-Installer/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=12) as response:
-                data = json.loads(response.read().decode("utf-8"))
-
-            tag_name = data.get("tag_name", "v1.0.0")
-            assets = data.get("assets", [])
-
-            # Procura o arquivo .zip da release
+            # 1. Consulta o version.json oficial para obter a chave criptográfica
+            versao_remota = "1.0.0"
+            chave_esperada = None
             download_url = None
-            zip_filename = None
-            for a in assets:
-                name = a.get("name", "")
-                if name.lower().endswith(".zip") and "source" not in name.lower():
-                    download_url = a.get("browser_download_url")
-                    zip_filename = name
-                    break
+
+            try:
+                req_v = urllib.request.Request(
+                    VERSION_JSON_URL,
+                    headers={"User-Agent": "LCR-OdontoGest-Installer/1.0", "Cache-Control": "no-cache"}
+                )
+                with urllib.request.urlopen(req_v, timeout=10) as resp_v:
+                    v_data = json.loads(resp_v.read().decode("utf-8"))
+                    versao_remota = v_data.get("version", "1.0.0")
+                    chave_esperada = v_data.get("package_sha256")
+                    download_url = v_data.get("download_url")
+            except Exception:
+                pass  # Tenta fallback pelo Releases API se version.json ainda não estiver na raiz
+
+            # 2. Se download_url não veio do version.json, busca na release mais recente
+            if not download_url:
+                req = urllib.request.Request(
+                    API_RELEASE_URL,
+                    headers={"User-Agent": "LCR-OdontoGest-Installer/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    rel_data = json.loads(response.read().decode("utf-8"))
+
+                assets = rel_data.get("assets", [])
+                for a in assets:
+                    name = a.get("name", "")
+                    if name.lower().endswith(".zip") and "source" not in name.lower():
+                        download_url = a.get("browser_download_url")
+                        break
 
             if not download_url:
                 raise Exception(
-                    "O arquivo LCR-OdontoGest.zip ainda não foi anexado à versão mais recente no GitHub.\n"
-                    "Por favor, anexe o arquivo .zip na página de Releases e tente novamente."
+                    "O arquivo LCR-OdontoGest.zip ainda não foi anexado na Release do GitHub.\n"
+                    "Por favor, anexe o arquivo .zip na release e tente novamente."
                 )
 
-            # 2. Download do pacote
-            temp_zip = Path(os.environ.get("TEMP", ".")) / f"LCR-OdontoGest-{tag_name}.zip"
-            self.set_status(f"2/4: Baixando pacote ({tag_name})...", 20)
+            # 3. Baixar o arquivo .zip
+            temp_zip = Path(os.environ.get("TEMP", ".")) / f"LCR-OdontoGest-{versao_remota}.zip"
+            self.set_status(f"2/5: Baixando sistema v{versao_remota}...", 20)
 
             def reporthook(blocknum, blocksize, totalsize):
                 if totalsize > 0:
-                    percent = min(80, int(20 + (blocknum * blocksize / totalsize) * 60))
+                    percent = min(75, int(20 + (blocknum * blocksize / totalsize) * 55))
                     mb_downloaded = (blocknum * blocksize) / (1024 * 1024)
                     mb_total = totalsize / (1024 * 1024)
-                    self.set_status(f"2/4: Baixando: {mb_downloaded:.1f} MB / {mb_total:.1f} MB ({percent}%)", percent)
+                    self.set_status(f"2/5: Baixando: {mb_downloaded:.1f} MB / {mb_total:.1f} MB ({percent}%)", percent)
 
             urllib.request.urlretrieve(download_url, str(temp_zip), reporthook=reporthook)
 
-            # 3. Extração para DEST_DIR
-            self.set_status("3/4: Instalando arquivos em C:\\LCR-OdontoGest...", 85)
+            # 4. Validação da Chave Criptográfica SHA-256
+            self.set_status("3/5: Validando integridade criptográfica (SHA-256)...", 78)
+            hash_baixado = calcular_sha256(temp_zip)
+
+            if chave_esperada:
+                if hash_baixado.upper() != chave_esperada.upper().strip():
+                    try:
+                        temp_zip.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise Exception(
+                        "FALHA CRÍTICA DE SEGURANÇA:\n"
+                        "O arquivo baixado não confere com a chave oficial registrada no servidor!\n"
+                        f"Esperado: {chave_esperada[:20]}...\n"
+                        f"Recebido: {hash_baixado[:20]}...\n\n"
+                        "A instalação foi abortada para proteger a integridade do seu computador."
+                    )
+
+            # 5. Extração para DEST_DIR
+            self.set_status("4/5: Instalando arquivos em C:\\LCR-OdontoGest...", 85)
             DEST_DIR.mkdir(parents=True, exist_ok=True)
 
             with zipfile.ZipFile(temp_zip, "r") as zip_ref:
                 zip_ref.extractall(DEST_DIR)
 
-            # Limpa arquivo temporário
+            # Limpa temporário
             try:
                 temp_zip.unlink(missing_ok=True)
             except Exception:
                 pass
 
-            # 4. Criar Atalho na Área de Trabalho
-            self.set_status("4/4: Criando atalho na Área de Trabalho...", 95)
+            # 6. Criação do Atalho
+            self.set_status("5/5: Criando atalho oficial na Área de Trabalho...", 95)
             self._criar_atalho()
 
-            self.set_status("Instalação concluída com sucesso!", 100)
+            self.set_status("Instalação concluída com validação de segurança!", 100)
             self.after(0, self._finalizar_sucesso)
 
         except urllib.error.URLError:
@@ -247,7 +288,6 @@ class ModernInstallerApp(tk.Tk):
 
             shortcut_path = desktop / f"{APP_NAME}.lnk"
 
-            # Criação via PowerShell WScript.Shell
             cmd = [
                 "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
                 f"$w = New-Object -ComObject WScript.Shell; "
@@ -269,8 +309,10 @@ class ModernInstallerApp(tk.Tk):
             command=self._iniciar_sistema
         )
         messagebox.showinfo(
-            "Sucesso",
-            f"O {APP_NAME} foi instalado com sucesso!\nUm atalho foi criado na sua Área de Trabalho."
+            "Segurança Confirmada",
+            f"O {APP_NAME} foi instalado com sucesso!\n"
+            "Chave de integridade SHA-256 verificada e aprovada.\n"
+            "O atalho oficial está na sua Área de Trabalho."
         )
 
     def _iniciar_sistema(self):

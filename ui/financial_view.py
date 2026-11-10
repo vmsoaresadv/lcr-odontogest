@@ -39,7 +39,7 @@ QWidget {
 QDialog {
     background-color: #f8fafc;
 }
-QLineEdit, QTextEdit, QDoubleSpinBox {
+QLineEdit, QTextEdit, QDoubleSpinBox, QSpinBox {
     background-color: #ffffff;
     color: #0f172a;
     border: 1px solid #cbd5e1;
@@ -182,7 +182,7 @@ QDateEdit::drop-down {
     border-top-right-radius: 5px;
     border-bottom-right-radius: 5px;
 }
-QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus, QDoubleSpinBox:focus {
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus {
     border: 2px solid #2ca5a9;
     background-color: #ffffff;
 }
@@ -535,8 +535,33 @@ class TransactionFormDialog(QDialog):
         self.spn_dia_venc = QSpinBox()
         self.spn_dia_venc.setRange(1, 31)
         self.spn_dia_venc.setValue(10)
-        self.spn_dia_venc.setFixedWidth(65)
-        self.spn_dia_venc.setToolTip("Dia fixo do mês em que este lançamento deve vencer e gerar alerta prévio")
+        self.spn_dia_venc.setFixedWidth(80)
+        self.spn_dia_venc.setFixedHeight(32)
+        self.spn_dia_venc.setAlignment(Qt.AlignCenter)
+        self.spn_dia_venc.setStyleSheet("""
+            QSpinBox {
+                background-color: #ffffff;
+                color: #0f766e;
+                font-size: 13px;
+                font-weight: bold;
+                border: 1px solid #0f766e;
+                border-radius: 6px;
+                padding: 2px 4px;
+            }
+            QSpinBox:focus {
+                border: 2px solid #0d9488;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 18px;
+                background-color: #f1f5f9;
+                border: 1px solid #cbd5e1;
+                border-radius: 2px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #e2e8f0;
+            }
+        """)
+        self.spn_dia_venc.setToolTip("Dia do mês em que este lançamento deve vencer e gerar alerta prévio (1 a 31)")
         row_rec.addWidget(self.spn_dia_venc)
 
         row_rec.addStretch()

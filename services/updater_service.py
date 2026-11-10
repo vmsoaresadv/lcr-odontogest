@@ -25,9 +25,21 @@ def parse_version_tuple(v_str: str) -> tuple:
 
 def verificar_atualizacao(repo: str = GITHUB_REPO, timeout: int = 6) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
-    Consulta o GitHub Releases para checar se há uma versão superior à atual.
+    Consulta o GitHub Releases e o version.json para checar se há uma versão superior à atual
+    com chave de segurança criptográfica SHA-256.
     Retorna: (tem_atualizacao, info_versao, mensagem)
     """
+    # 1. Tenta obter version.json oficial com chave SHA-256
+    v_url = f"https://raw.githubusercontent.com/{repo}/main/version.json"
+    sha256_chave = None
+    try:
+        req_v = urllib.request.Request(v_url, headers={"User-Agent": f"{APP_NAME}-Updater/{__version__}", "Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req_v, timeout=timeout) as resp_v:
+            v_data = json.loads(resp_v.read().decode("utf-8"))
+            sha256_chave = v_data.get("package_sha256")
+    except Exception:
+        pass
+
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(
         url,
@@ -52,7 +64,7 @@ def verificar_atualizacao(repo: str = GITHUB_REPO, timeout: int = 6) -> Tuple[bo
                     file_name = None
                     for a in assets:
                         name = a.get("name", "").lower()
-                        if name.endswith(".exe") or name.endswith(".zip"):
+                        if name.endswith(".zip") or name.endswith(".exe"):
                             download_url = a.get("browser_download_url")
                             file_name = a.get("name")
                             break
@@ -65,6 +77,7 @@ def verificar_atualizacao(repo: str = GITHUB_REPO, timeout: int = 6) -> Tuple[bo
                         "publicado_em": data.get("published_at", ""),
                         "download_url": download_url,
                         "file_name": file_name,
+                        "sha256": sha256_chave,
                         "html_url": data.get("html_url", "")
                     }
                     return True, info, f"Nova versão {tag_name} disponível!"
